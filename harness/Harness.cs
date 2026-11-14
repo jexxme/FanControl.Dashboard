@@ -119,6 +119,10 @@ static class Harness
                 win.UpdateLayout();
                 Dispatcher.CurrentDispatcher.BeginInvoke(new Action(() =>
                 {
+                    // lay out at full height: a window cannot grow past the screen, which would clip tall renders (e.g. on CI)
+                    host.Measure(new Size(host.Width, double.PositiveInfinity));
+                    host.Arrange(new Rect(0, 0, host.Width, host.DesiredSize.Height));
+                    host.UpdateLayout();
                     var rtb = new RenderTargetBitmap((int)Math.Ceiling(host.ActualWidth), (int)Math.Ceiling(host.ActualHeight), 96, 96, PixelFormats.Pbgra32);
                     rtb.Render(host);
                     var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(rtb));
