@@ -85,9 +85,11 @@ static class Harness
         var host = new StackPanel { Background = new SolidColorBrush(page), Width = width + 24 };
         var win = new Window
         {
-            Title = "Dashboard harness", SizeToContent = SizeToContent.WidthAndHeight, Left = -10000, Top = 0,
+            // the content sits in a Canvas, which lays it out at its full size: a window cannot grow past the screen,
+            // and anything taller would be clipped in the PNG (e.g. on CI runners with small screens)
+            Title = "Dashboard harness", Width = 200, Height = 200, Left = -10000, Top = 0,
             WindowStartupLocation = WindowStartupLocation.Manual, ShowActivated = false, ShowInTaskbar = false,
-            FontFamily = new FontFamily("Segoe UI"), Content = host, Background = new SolidColorBrush(page),
+            FontFamily = new FontFamily("Segoe UI"), Content = new Canvas { Children = { host } }, Background = new SolidColorBrush(page),
         };
         if (theme != "plain")
         {
@@ -120,11 +122,6 @@ static class Harness
                 Dispatcher.CurrentDispatcher.BeginInvoke(new Action(() =>
                 {
                     // lay out at full height: a window cannot grow past the screen, which would clip tall renders (e.g. on CI)
-                    // detached from the window, so the window's own layout pass cannot shrink it again
-                    win.Content = null;
-                    host.Measure(new Size(host.Width, double.PositiveInfinity));
-                    host.Arrange(new Rect(0, 0, host.Width, host.DesiredSize.Height));
-                    host.UpdateLayout();
                     var rtb = new RenderTargetBitmap((int)Math.Ceiling(host.ActualWidth), (int)Math.Ceiling(host.ActualHeight), 96, 96, PixelFormats.Pbgra32);
                     rtb.Render(host);
                     var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(rtb));
