@@ -95,16 +95,25 @@ public sealed class FanControlBindingTests
     {
         var log = new Logger();
         var container = new Container();
+        // never touch the user's real settings and history
+        string dir = Path.Combine(Path.GetTempPath(), "fcdash-plugin-" + Guid.NewGuid().ToString("N"));
+        string before = DashboardPlugin.DataDirectory;
+        DashboardPlugin.DataDirectory = dir;
+        try { Lifecycle(log, container); }
+        finally { DashboardPlugin.DataDirectory = before; try { Directory.Delete(dir, true); } catch { } }
+        Assert.Equal(new[] { "Dashboard/cpu-load", "Dashboard/gpu-load", "Dashboard/ram-load" }, container.TempSensors.Select(s => s.Id).ToArray());
+        Assert.Contains(log.Lines, l => l.StartsWith("[Dashboard] initialized", StringComparison.Ordinal));
+        Assert.DoesNotContain(log.Lines, l => l.Contains("initialize failed") || l.Contains("TypeLoad") || l.Contains("MissingMethod") || l.Contains("FileNotFound"));
+    }
+
+    static void Lifecycle(Logger log, Container container)
+    {
         var plugin = new DashboardPlugin(log);
         Assert.Equal("Dashboard", plugin.Name);
         plugin.Initialize();
         plugin.Load(container);
         plugin.Update();
         plugin.Close();
-
-        Assert.Equal(new[] { "Dashboard/cpu-load", "Dashboard/gpu-load", "Dashboard/ram-load" }, container.TempSensors.Select(s => s.Id).ToArray());
-        Assert.Contains(log.Lines, l => l.StartsWith("[Dashboard] initialized", StringComparison.Ordinal));
-        Assert.DoesNotContain(log.Lines, l => l.Contains("initialize failed") || l.Contains("TypeLoad") || l.Contains("MissingMethod") || l.Contains("FileNotFound"));
     }
 
     sealed class Logger : IPluginLogger

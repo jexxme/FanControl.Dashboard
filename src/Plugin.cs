@@ -24,15 +24,18 @@ namespace FanControl.Dashboard
 
         public DashboardPlugin(IPluginLogger logger) { _logger = logger; }
 
+        /// <summary>Where settings.json and history.bin live (%AppData%\FanControl.Dashboard); tests point it elsewhere.</summary>
+        internal static string DataDirectory = System.IO.Path.GetDirectoryName(Settings.DefaultPath);
+
         public string Name { get { return "Dashboard"; } }
 
         public void Initialize()
         {
             try
             {
-                _sampler = new Sampler(Log) { HistoryPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Settings.DefaultPath), "history.bin") };
+                _sampler = new Sampler(Log) { HistoryPath = System.IO.Path.Combine(DataDirectory, "history.bin") };
                 _sampler.Start();
-                _injector = new Injector(_sampler, Settings.Load(Settings.DefaultPath, Log), Log);
+                _injector = new Injector(_sampler, Settings.Load(System.IO.Path.Combine(DataDirectory, "settings.json"), Log), Log);
                 _injector.Start();
                 Log("initialized");
             }
