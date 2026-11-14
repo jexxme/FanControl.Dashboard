@@ -9,8 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Reference Include="FanControl.IPC"><HintPath>$(FanControlDir)FanControl.IPC.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="Grpc.Core.Api"><HintPath>$(FanControlDir)Grpc.Core.Api.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="Google.Protobuf"><HintPath>$(FanControlDir)Google.Protobuf.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="FanControl.IPC"><HintPath>$(FanControlRefDir)FanControl.IPC.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Grpc.Core.Api"><HintPath>$(FanControlRefDir)Grpc.Core.Api.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Google.Protobuf"><HintPath>$(FanControlRefDir)Google.Protobuf.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
 </Project>

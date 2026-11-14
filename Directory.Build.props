@@ -10,7 +10,8 @@
   <PropertyGroup>
     <FanControlDir Condition="'$(FanControlDir)' == '' and '$(FANCONTROL_DIR)' != ''">$(FANCONTROL_DIR)</FanControlDir>
     <FanControlDir Condition="'$(FanControlDir)' == ''">C:\Program Files (x86)\FanControl</FanControlDir>
-    <FanControlDir>$([MSBuild]::EnsureTrailingSlash('$(FanControlDir)'))</FanControlDir>
+    <!-- separate property: a FanControlDir passed with -p: is global and cannot be modified here -->
+    <FanControlRefDir>$([MSBuild]::EnsureTrailingSlash('$(FanControlDir)'))</FanControlRefDir>
 
     <Version>0.1.0</Version>
     <Authors>fancontrol-dashboard contributors</Authors>
