@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using FanControl.Dashboard;
 using Xunit;
 
@@ -61,7 +62,7 @@ public sealed class JsonTests
     {
         var d = new Dictionary<string, object>
         {
-            { "b", true }, { "i", 220 }, { "d", 95.0 }, { "half", 89.5 }, { "e", ChartLayout.Stacked },
+            { "b", true }, { "i", 220 }, { "d", 95.0 }, { "half", 89.5 }, { "e", System.DayOfWeek.Monday },
             { "list", new List<string> { "0:gpu.vram", "1:cpu.load" } }, { "none", null }, { "s", "<a & 'b'>\"\\\n\u0001" },
         };
         Assert.Equal("{\"b\":true,\"i\":220,\"d\":95,\"half\":89.5,\"e\":1,\"list\":[\"0:gpu.vram\",\"1:cpu.load\"],\"none\":null," +
@@ -102,13 +103,17 @@ public sealed class JsonTests
         });
         var s = Settings.FromJson(oldFile);
         s.Sanitize();
-        Assert.False(s.ShowFans); Assert.Equal(ChartLayout.Single, s.Layout); Assert.Equal(1, s.SingleMode);
-        Assert.Equal(30, s.RangeMinutes); Assert.Equal(300, s.ChartHeight); Assert.Equal(89, s.CpuLimit); Assert.Equal(60, s.RamWarning);
-        Assert.True(s.IsHidden(1, "ram.load"));
-        Assert.True(s.RamWarningAuto); // new options get their defaults
-        Assert.Equal(new[] { "cpu", "gpu", "ram", "fans" }, s.CardOrder.ToArray());
-        // and the start of the new file is still the old format, byte for byte
-        Assert.StartsWith(oldFile.Substring(0, oldFile.IndexOf("\"HiddenSeries\"", StringComparison.Ordinal)), s.ToJson().Replace(",\"RamWarningAuto\":true", ""));
+        Assert.True(s.Tile("fans").Hidden);
+        Assert.True(s.Chart("temp").Hidden); // "one chart" set to load (SingleMode 1): only the load chart was visible
+        Assert.False(s.Chart("load").Hidden);
+        Assert.Equal(30, s.RangeMinutes); Assert.Equal(300, s.ChartHeight);
+        Assert.Equal(89, s.Tile("cpu").Limit); Assert.Equal(60, s.Tile("ram").Limit);
+        Assert.True(s.Tile("ram").LimitFromModules); // not in the old file: default
+        Assert.True(s.Chart("load").Lines.Single(l => l.Ref == "auto:ram.load").Hidden);
+        // written again in the new format, it reads back the same
+        var again = Settings.FromJson(s.ToJson());
+        again.Sanitize();
+        Assert.Equal(s.ToJson(), again.ToJson());
     }
 #endif
 }

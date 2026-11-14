@@ -23,6 +23,8 @@ namespace FanControl.Dashboard
         public static Brush Track = Freeze("#334155");
         public static Brush Hover = Freeze("#273449");
         public static Brush Accent = Freeze("#67E8F9");
+        /// <summary>Text on an accent-coloured button.</summary>
+        public static Brush OnAccent = Freeze("#0B1220");
         public static Brush Tooltip = Freeze("#0F172A");
         public static Brush Warn, Critical, Limit;
         // categorical series slots
@@ -40,6 +42,7 @@ namespace FanControl.Dashboard
             new[] { "slate", "#8A97A8", "#5E6B7C" },
         };
         public static readonly string[] Choices = ChoiceTable.Select(c => c[0]).ToArray();
+        static readonly string[] SensorColors = { "pink", "teal", "lime", "red", "slate" };
         static readonly string[] CustomCycle = { "pink", "teal", "lime", "red", "slate", "amber", "green", "violet", "blue", "orange" };
 
         public static bool IsChoice(string name) { return name != null && Array.IndexOf(Choices, name) >= 0; }
@@ -50,29 +53,36 @@ namespace FanControl.Dashboard
             return Freeze(IsLight ? row[2] : row[1]);
         }
 
-        /// <summary>Colour name a series gets unless the user picked one.</summary>
-        public static string DefaultColor(string key, int customIndex)
+        /// <summary>Colour name a value gets unless the user picked one: fixed for the automatic values, stable per sensor otherwise.</summary>
+        public static string DefaultColor(string r)
         {
-            switch (key)
+            switch (r)
             {
-                case "cpu.temp": case "cpu.load": return "blue";
-                case "gpu.temp": case "gpu.load": return "orange";
-                case "gpu.hot": return "green";
-                case "gpu.vram": return "amber";
-                case "ram.temp": case "ram.load": return "violet";
-                default: return CustomCycle[Math.Max(0, customIndex) % CustomCycle.Length];
+                case "auto:cpu.temp": case "auto:cpu.load": case "auto:cpu.power": return "blue";
+                case "auto:gpu.temp": case "auto:gpu.load": return "orange";
+                case "auto:gpu.hot": return "green";
+                case "auto:gpu.vram": return "amber";
+                case "auto:ram.temp": case "auto:ram.load": case "auto:ram.used": case "auto:ram.modules": return "violet";
             }
+            // a stable hash (string.GetHashCode differs between runs and runtimes)
+            uint h = 2166136261;
+            foreach (char c in r ?? "") h = (h ^ c) * 16777619;
+            // only colours the automatic values do not use, so a sensor never looks like the CPU or GPU line
+            return SensorColors[h % (uint)SensorColors.Length];
         }
 
-        /// <summary>The colour of a series (built-in key or custom:&lt;id&gt;) under the current settings.</summary>
-        public static Brush ForSeries(Settings s, string key)
+        /// <summary>The colour of a value under the current settings.</summary>
+        public static Brush ForRef(Settings s, string r)
         {
             string name;
-            if (s != null && s.Colors.TryGetValue(key, out name) && IsChoice(name)) return Named(name);
-            var custom = s == null ? null : s.FindCustom(key);
-            if (custom != null && key.StartsWith("custom:", StringComparison.Ordinal))
-                return Named(IsChoice(custom.Color) ? custom.Color : DefaultColor(key, s.Custom.IndexOf(custom)));
-            return Named(DefaultColor(key, 0));
+            if (r != null && s != null && s.Colors.TryGetValue(r, out name) && IsChoice(name)) return Named(name);
+            return Named(DefaultColor(r));
+        }
+
+        public static string ColorName(Settings s, string r)
+        {
+            string name;
+            return r != null && s != null && s.Colors.TryGetValue(r, out name) && IsChoice(name) ? name : null;
         }
 
         /// <summary>Series and status colours for a dark or a light card surface (checked for contrast on both).</summary>
@@ -112,6 +122,7 @@ namespace FanControl.Dashboard
             Color bg = ((SolidColorBrush)Card).Color, fg = ((SolidColorBrush)Text).Color, c = accent;
             for (double t = 0.1; Contrast(c, bg) < 3 && t <= 1; t += 0.1) c = Mix(accent, Color.FromRgb(fg.R, fg.G, fg.B), t);
             Accent = Freeze(c);
+            OnAccent = Freeze(Luminance(c) > 0.55 ? Color.FromRgb(0x14, 0x14, 0x14) : Colors.White);
         }
 
         public static Brush Freeze(string hex) { return Freeze((Color)ColorConverter.ConvertFromString(hex)); }

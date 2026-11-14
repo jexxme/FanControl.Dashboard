@@ -47,7 +47,7 @@ namespace FanControl.Dashboard
         {
             if (float.IsNaN(value)) return "–";
             if (unit == "°C") return ToDisplay(value).ToString("0", Inv) + " " + Temp;
-            string f = unit == "V" || unit == "A" ? "0.00" : unit == "W" && Math.Abs(value) < 10 ? "0.0" : "0";
+            string f = unit == "V" || unit == "A" ? "0.00" : unit == "GB" || (unit == "W" && Math.Abs(value) < 10) ? "0.0" : "0";
             return value.ToString(f, Inv) + (unit.Length > 0 ? " " + unit : "");
         }
 
@@ -56,15 +56,69 @@ namespace FanControl.Dashboard
         {
             if (float.IsNaN(value)) return "–";
             if (unit == "°C") return ToDisplay(value).ToString("0", Inv);
-            return value.ToString(unit == "V" || unit == "A" ? "0.00" : "0", Inv);
+            return value.ToString(unit == "V" || unit == "A" ? "0.00" : unit == "GB" ? "0.0" : "0", Inv);
         }
 
         public static string DisplayUnit(string unit) { return unit == "°C" ? Temp : unit; }
     }
 
-    /// <summary>Chart line preparation: smoothing and reducing many samples to a few per pixel.</summary>
+    /// <summary>Chart line preparation: smoothing, reducing many samples to a few per pixel, axis scaling.</summary>
     static class ChartMath
     {
+        /// <summary>
+        /// The y axis in display units. Temperatures keep 30 (or 20) to at least 100 °C (80 to 220 °F) so charts stay
+        /// comparable; percentages are 0..100; anything else (rpm, W, MHz, V) starts at 0 and gets a "nice" step.
+        /// </summary>
+        public static void Axis(string unit, bool fahrenheit, double min, double max, double plotHeight, out double lo, out double hi, out double step)
+        {
+            if (unit == "°C")
+            {
+                if (double.IsNaN(min)) { min = fahrenheit ? 104 : 40; max = min; }
+                if (!fahrenheit)
+                {
+                    lo = min < 30 ? Math.Min(20, Math.Floor((min - 2) / 10) * 10) : 30;
+                    hi = Math.Max(100, Math.Ceiling((max + 2) / 10) * 10);
+                    step = hi - lo > 80 ? 20 : 10;
+                }
+                else
+                {
+                    lo = min < 86 ? Math.Min(60, Math.Floor((min - 4) / 20) * 20) : 80;
+                    hi = Math.Max(220, Math.Ceiling((max + 4) / 20) * 20);
+                    step = hi - lo > 160 ? 40 : 20;
+                }
+                if (plotHeight < 150) step *= 2;
+                return;
+            }
+            if (unit == "%")
+            {
+                lo = 0; hi = double.IsNaN(max) || max <= 100 ? 100 : Math.Ceiling(max / 25) * 25; step = plotHeight < 150 ? 50 : 25;
+                return;
+            }
+            if (double.IsNaN(min)) { min = 0; max = 1; }
+            lo = min >= 0 ? 0 : -NiceCeil(-min);
+            int ticks = plotHeight < 150 ? 2 : 4;
+            step = Nice(Math.Max(1e-6, (Math.Max(max, lo + 1e-6) - lo) * 1.05) / ticks);
+            hi = lo + Math.Max(1, Math.Ceiling((max - lo) * 1.05 / step)) * step;
+        }
+
+        /// <summary>1, 2, 2.5 or 5 times a power of ten, at least <paramref name="raw"/>.</summary>
+        public static double Nice(double raw)
+        {
+            double p = Math.Pow(10, Math.Floor(Math.Log10(raw)));
+            foreach (var m in new[] { 1, 2, 2.5, 5, 10 }) if (m * p >= raw - 1e-12) return m * p;
+            return 10 * p;
+        }
+
+        static double NiceCeil(double v) { var s = Nice(v / 4); return Math.Ceiling(v / s) * s; }
+
+        /// <summary>Axis label text: no decimals unless the step needs them.</summary>
+        public static string Tick(double v, double step)
+        {
+            return v.ToString(step >= 1 ? "0" : step >= 0.1 ? "0.#" : "0.##", CultureInfo.InvariantCulture);
+        }
+
+        public static string ValueFormat(string unit) { return unit == "V" || unit == "A" ? "0.00" : unit == "GB" ? "0.0" : "0"; }
+
         /// <summary>Trailing moving average over <paramref name="window"/> samples; NaN gaps stay gaps.</summary>
         public static float[] Smooth(float[] data, int window)
         {

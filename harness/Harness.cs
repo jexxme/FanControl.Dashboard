@@ -24,15 +24,15 @@ using FanControl.Dashboard;
 //     --theme <dark|light|plain>  dark/light host a MaterialDesign card like Fan Control does (needs MaterialDesignThemes.Wpf.dll
 //                             from FANCONTROL_DIR); plain uses the built-in fallback colours (default dark)
 //     --width <px>            view width (default 1180)
-//     --layout <0|1|2>        side by side | stacked | one chart
-//     --range <0..3>          2 / 5 / 10 / 30 minutes
-//     --hover <0..1>          show the hover crosshair/tooltip at this fraction of the chart
-//     --settings              open the settings panel
+//     --range <0..4>          2 / 5 / 10 / 30 / 60 minutes
+//     --hover <0..1>          show the hover crosshair/tooltip at this fraction of the first chart
 //     --collapsed             collapse the section
-//     --hide <keys>           comma-separated legend entries to hide, e.g. 0:gpu.vram
-//     --tab <0..5>            with --settings: General, Cards, Sensors, Custom, Fans, Look
-//     --custom                demo mode: add example custom sensors (water temperature, pump, motherboard)
-//     --fahrenheit, --compact, --smooth <seconds>, --reorder    look options and a changed card/fan order
+//     --edit                  customize mode
+//     --editor <what>         with --edit: open an editor: card (add a card), display, or a card / chart id (cpu, gpu, ram, fans, temp, load)
+//     --hide <ids>            comma-separated card or chart ids to hide
+//     --custom                demo mode: example cards and a chart for sensors a user added (water, pump, SSD)
+//     --reorder               demo mode: a changed card and fan order, a renamed and a hidden fan
+//     --fahrenheit, --compact, --stacked, --smooth <seconds>
 //
 // Fan Control's assemblies are loaded from FANCONTROL_DIR or C:\Program Files (x86)\FanControl.
 static class Harness
@@ -67,24 +67,26 @@ static class Harness
         int seconds = int.Parse(Opt(a, "--seconds", live ? "8" : "0"), Inv);
         string theme = Opt(a, "--theme", "dark");
         double width = double.Parse(Opt(a, "--width", "1180"), Inv);
-        int layout = int.Parse(Opt(a, "--layout", "0"), Inv);
         int range = int.Parse(Opt(a, "--range", "2"), Inv);
         double hover = double.Parse(Opt(a, "--hover", "-1"), Inv);
-        bool settingsOpen = a.Contains("--settings");
+        bool editing = a.Contains("--edit");
+        string editor = Opt(a, "--editor", null);
         bool collapsed = a.Contains("--collapsed");
-        string hide = Opt(a, "--hide", null);
-        int tab = int.Parse(Opt(a, "--tab", "0"), Inv);
 
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         bool light = theme == "light";
         Color page = theme == "plain" ? Color.FromRgb(0x2B, 0x2B, 0x2B) : light ? Color.FromRgb(0xF3, 0xF3, 0xF3) : Color.FromRgb(0x20, 0x20, 0x20);
         if (theme != "plain") LoadMaterialDesign(app, light);
 
-        var settings = new Settings { Collapsed = collapsed, Fahrenheit = a.Contains("--fahrenheit"), Compact = a.Contains("--compact") };
+        var settings = new Settings { Collapsed = collapsed, Fahrenheit = a.Contains("--fahrenheit"), Compact = a.Contains("--compact"), ChartsStacked = a.Contains("--stacked") };
         settings.Smoothing = int.Parse(Opt(a, "--smooth", "0"), Inv);
-        if (hide != null) settings.HiddenSeries.AddRange(hide.Split(','));
         if (!live && a.Contains("--custom")) Demo.AddCustom(settings);
         if (!live && a.Contains("--reorder")) Demo.Reorder(settings);
+        foreach (var id in (Opt(a, "--hide", "") ?? "").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var t = settings.Tile(id); if (t != null) t.Hidden = true;
+            var c = settings.Chart(id); if (c != null) c.Hidden = true;
+        }
         settings.Sanitize();
 
         var sampler = new Sampler(Console.WriteLine);
@@ -106,6 +108,12 @@ static class Harness
             var bg = app.TryFindResource("MaterialDesign.Brush.Background") ?? app.TryFindResource("MaterialDesignPaper");
             if (fg is Brush) win.SetValue(System.Windows.Documents.TextElement.ForegroundProperty, fg);
             if (bg is Brush) { win.Background = (Brush)bg; host.Background = (Brush)bg; }
+            if (!light)
+            {
+                // Fan Control's own dark theme (taken from a screenshot of V285): navy cards on a dark grey page
+                var page2 = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B));
+                win.Background = page2; host.Background = page2;
+            }
             // a native-looking card plus a section header, like the ones Theme.Adopt copies from Fan Control's Home page
             var sample = MaterialCard(light);
             if (sample != null) host.Children.Add(sample);
@@ -125,7 +133,7 @@ static class Harness
             timer.Tick += (o, ev) =>
             {
                 timer.Stop();
-                view.Debug(layout, range, hover, settingsOpen, tab);
+                view.Debug(range, hover, editing, editor);
                 win.UpdateLayout();
                 Dispatcher.CurrentDispatcher.BeginInvoke(new Action(() =>
                 {
@@ -167,6 +175,7 @@ static class Harness
         if (type == null) return null;
         var card = (ContentControl)Activator.CreateInstance(type);
         card.Width = 200; card.Height = 60;
+        if (!light) card.Background = new SolidColorBrush(Color.FromRgb(0x15, 0x1F, 0x2E));
         card.Content = new TextBlock { Text = "Sample card" };
         var header = new TextBlock { Text = "Controls", FontSize = 16, FontWeight = FontWeights.Medium, Foreground = new SolidColorBrush(light ? Color.FromRgb(0x20, 0x20, 0x20) : Colors.White) };
         var p = new StackPanel();
@@ -188,22 +197,26 @@ static class Demo
         new SensorInfo("/memory/dimm/1/temperature/0", "Temperature", "DIMM #1"), new SensorInfo("/memory/dimm/3/temperature/0", "Temperature", "DIMM #2"),
         new SensorInfo("/lpc/it8688e/temperature/0", "Temperature", "System"), new SensorInfo("/lpc/it8688e/temperature/1", "Temperature", "Chipset"),
         new SensorInfo("/lpc/it8688e/fan/4", "Rpm", "Fan #5"), new SensorInfo("/lpc/it8688e/control/4", "Control", "Fan #5"),
+        new SensorInfo("/lpc/it8688e/fan/0", "Rpm", "Fan #1"), new SensorInfo("/lpc/it8688e/control/0", "Control", "Fan #1"),
+        new SensorInfo("/lpc/it8688e/voltage/0", "Voltage", "Vcore"), new SensorInfo("/amdcpu/0/clock/1", "Frequency", "Cores (Average)"),
         new SensorInfo("Mix/Water", "Temperature", "Water"), new SensorInfo("/nvme/0/temperature/0", "Temperature", "Composite Temperature"),
     };
 
     public static void AddCustom(Settings s)
     {
-        var water = s.AddCustom("Mix/Water", "Water", "°C"); water.Limit = 40;
-        var pump = s.AddCustom("/lpc/it8688e/fan/4", "Pump", "rpm");
-        var nvme = s.AddCustom("/nvme/0/temperature/0", "NVMe SSD", "°C"); nvme.ShowCard = false; nvme.Color = "slate";
+        s.Tiles.Add(new TileConfig { Id = "water", Title = "Water", Main = "fc:Mix/Water", Limit = 40, Details = { "fc:/lpc/it8688e/fan/4" } });
+        s.Tiles.Add(new TileConfig { Id = "ssd", Title = "SSD", Main = "fc:/nvme/0/temperature/0", Limit = 70 });
+        s.Chart("temp").Lines.Add(new LineConfig { Ref = "fc:Mix/Water" });
+        s.Charts.Add(new ChartConfig { Id = "rpm", Title = "Fan speeds", Lines = { new LineConfig { Ref = "fc:/lpc/it8688e/fan/4" }, new LineConfig { Ref = "fc:/lpc/it8688e/fan/0" } } });
+        s.Colors["fc:Mix/Water"] = "teal";
+        s.Colors["fc:/lpc/it8688e/fan/0"] = "lime";
     }
 
     public static void Reorder(Settings s)
     {
-        s.MoveCard("fans", -3);
-        s.MoveCard("fans", -1); s.MoveCard("fans", -1); s.MoveCard("fans", -1);
+        Settings.Move(s.Tiles, s.Tile("fans"), 0);
         s.Fan("c3").Hidden = true;
-        s.Fan("c0").Name = "Noctua NH-D15";
+        s.Fan("c0").Name = "Tower cooler";
     }
 
     public static void Fill(Sampler sampler, string scenario, Settings settings)
@@ -267,12 +280,18 @@ static class Demo
                 v["duty:c4"] = noGpu ? 70 : (float)(gpuL > 40 ? 38 + gpuL * 0.2 : 0);
                 if (noGpu) v["rpm:r4"] = 2780;
             }
-            foreach (var c in settings.Custom)
-            {
-                if (c.SensorId == "Mix/Water") v[c.Key] = (float)(31 + (cpuT - 45) * 0.12 + (gpuT - 40) * 0.15);
-                else if (c.SensorId == "/lpc/it8688e/fan/4") v[c.Key] = (float)(2400 + gpuL * 6);
-                else if (c.SensorId == "/nvme/0/temperature/0") v[c.Key] = (float)(38 + cpuL * 0.08);
-            }
+            // every demo sensor gets a value (the picker shows them; cards and charts read the ones they use)
+            v["fc:/amdcpu/0/temperature/2"] = (float)cpuT; v["fc:/amdcpu/0/temperature/3"] = (float)(cpuT - 9);
+            v["fc:/amdcpu/0/load/0"] = (float)cpuL; v["fc:/amdcpu/0/power/0"] = (float)(18 + cpuL * 0.95);
+            v["fc:/ram/load/0"] = v["ram.load"];
+            if (!noGpu) { v["fc:ADLX/AMD Radeon RX 7800 XT/0/temp/GPU"] = (float)gpuT; v["fc:ADLX/AMD Radeon RX 7800 XT/0/temp/Hotspot"] = (float)hotT; v["fc:ADLX/AMD Radeon RX 7800 XT/0/temp/Memory"] = (float)vramT; }
+            if (!ddr4) { v["fc:/memory/dimm/1/temperature/0"] = (float)ramT; v["fc:/memory/dimm/3/temperature/0"] = (float)(ramT - 1.5); }
+            v["fc:/lpc/it8688e/temperature/0"] = (float)(30 + cpuL * 0.04); v["fc:/lpc/it8688e/temperature/1"] = (float)(44 + gpuL * 0.03);
+            v["fc:/lpc/it8688e/fan/4"] = (float)(2400 + gpuL * 6); v["fc:/lpc/it8688e/control/4"] = (float)(60 + gpuL * 0.2);
+            v["fc:/lpc/it8688e/fan/0"] = (float)(cpuDuty * 15.5); v["fc:/lpc/it8688e/control/0"] = (float)Math.Round(cpuDuty);
+            v["fc:/lpc/it8688e/voltage/0"] = (float)(1.05 + cpuL * 0.002); v["fc:/amdcpu/0/clock/1"] = (float)(3600 + cpuL * 14);
+            v["fc:Mix/Water"] = (float)(31 + (cpuT - 45) * 0.12 + (gpuT - 40) * 0.15);
+            v["fc:/nvme/0/temperature/0"] = (float)(38 + cpuL * 0.08);
             sampler.Feed(v, fans, dimms, names, gpuName, starting ? null : "Quiet");
         }
     }

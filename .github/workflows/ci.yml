@@ -50,9 +50,11 @@ jobs:
           $runs = @(
             @('dark', '--demo full --theme dark'),
             @('light', '--demo full --theme light'),
-            @('settings', '--demo full --theme dark --settings'),
+            @('customize', '--demo full --custom --theme dark --edit --editor cpu'),
+            @('add-card', '--demo full --custom --theme dark --edit --editor card'),
+            @('custom', '--demo full --custom --reorder --theme dark --range 4'),
             @('intel-nvidia-760', '--demo intel-nvidia --theme dark --width 760'),
-            @('no-gpu-400', '--demo no-gpu --theme light --width 400 --layout 2'),
+            @('no-gpu-400', '--demo no-gpu --theme light --width 400 --stacked'),
             @('collapsed', '--demo full --theme dark --collapsed')
           )
           foreach ($h in $hosts) {

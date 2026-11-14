@@ -1,52 +1,70 @@
 # Fan Control Dashboard
 
-An **unofficial** plugin for [Fan Control](https://getfancontrol.com) that adds a live dashboard to the top of
-Fan Control's Home page: temperatures, load and fan speeds at a glance, plus history charts of the last 2 minutes to 1 hour — and almost everything about it can be customized.
+**The dashboard Fan Control never had.** An unofficial plugin that puts live temperatures, loads, fan speeds and
+history charts right at the top of [Fan Control](https://getfancontrol.com)'s Home page. It looks like part of the app,
+and you can make it show exactly what you care about.
 
-![Dashboard in Fan Control's dark theme, with the hover tooltip on the temperature chart](docs/dashboard-dark.png)
+![The dashboard on Fan Control's Home page: CPU, GPU, RAM, fans, a water and an SSD card, temperature and load history with the hover tooltip](docs/hero.png)
 
-<sub>Screenshots use the built-in demo data of the [harness](#the-harness), not a real machine.</sub>
+<sub>All screenshots use the demo data of the [harness](#the-harness), not a real machine.</sub>
+
+- **Everything at a glance.** CPU, GPU and RAM temperatures with the headroom to their limits, load, power, every fan's
+  duty and speed. Values turn amber when they get close to a limit and red above it.
+- **History you can read.** Up to an hour of every value, with charts that stay smooth at any length. A crosshair
+  syncs across all charts and the tooltip lists every line. Limit lines and labels on each line show where you stand.
+- **Yours to arrange.** Hit **Customize** and change the dashboard right where it is. Add a card for any sensor
+  Fan Control knows (a water temperature, an SSD, a pump, a mix sensor, a voltage…), build charts from any sensors,
+  reorder by dragging, hide what you don't need.
+- **Feels native.** It copies Fan Control's own cards, headers and colours at runtime, follows its light and dark theme
+  and switches with it. It fits wide and narrow windows, works with the keyboard and screen readers, and redraws only
+  while you look at it.
+- **Works on your hardware.** AMD and Intel CPUs; AMD and NVIDIA GPUs; DDR5 modules with sensors, DDR4 without; anything else
+  Fan Control can read can be added by hand.
+  When something isn't there, the dashboard says so instead of showing zeros.
 
 > [!IMPORTANT]
-> This project is not made by, affiliated with or endorsed by Fan Control or its author (Rem0o).
-> It hooks into Fan Control's window in a way the plugin API does not officially support, so a Fan Control update
-> can stop the dashboard from appearing (see [How it works](#how-it-works)). Fan control itself is never affected.
+> This is a community plugin. It is not made by, affiliated with or endorsed by Fan Control or its author (Rem0o).
+> It adds itself to Fan Control's window in a way the plugin API does not officially support, so a Fan Control update can
+> stop it from appearing. Fan control itself is never affected ([how it works](#how-it-works)).
 
-## Features
+## Make it yours
 
-- **Cards** for CPU, GPU, RAM and fans, laid out in 4, 2 or 1 columns depending on the window width (never 3 + 1).
-  - **CPU**: package temperature with the headroom to your CPU's limit (amber when close, red at or over it), load, package power.
-  - **GPU**: temperature, hotspot and memory (VRAM) temperatures, load as Task Manager shows it (busiest engine).
-  - **RAM**: hottest memory module (DDR5 modules with a temperature sensor) with the headroom to the modules' own warning
-    threshold, amount in use, per-module temperatures. Without module sensors it shows the amount in use instead.
-  - **Fans**: duty and speed of every enabled control in the current Fan Control profile; hover a name to see its curve.
-- **History charts** for temperature and load: side by side, stacked, or one chart with a toggle; 2 minutes to 1 hour;
-  limit lines; optional smoothing; a hover crosshair that is synced between the charts; click a legend entry to hide or show a line.
-- **Customizable**: choose the sensor behind every value, add your own sensors as cards or chart lines with limits and colours,
-  reorder cards and fans, rename and hide fans, °C or °F, compact density. See [Settings](#settings).
-- **Matches Fan Control's look**: cards and headers copy the style of Fan Control's own cards at runtime, in both the light
-  and the dark theme, and restyle when you switch themes.
-- **Collapsible**: collapsed, the header still shows CPU, GPU and RAM temperatures in one line.
-- **Plugin sensors** `CPU load %`, `GPU load %` and `RAM used %`, e.g. for tray icons (see [Known issues](#known-issues)).
-- **Keyboard and screen reader friendly**: every control can be reached with Tab and used with Enter/Space (arrow keys in the
-  segmented toggles, Esc closes the settings) and is announced as a button.
+Click **Customize** (top right of the dashboard). The dashboard stays where it is and becomes editable: click any card
+or chart to change it, drag it by its handle, hide it with the eye, or add new ones.
 
-| Light theme | Collapsed |
-|---|---|
-| ![Light theme](docs/dashboard-light.png) | ![Collapsed dashboard showing only the header](docs/collapsed.png) |
+![Customize mode: editing the Water card, with every card showing a handle, arrows, a hide and an edit button](docs/customize.png)
 
-## Compatibility
+A **card** shows one big value plus anything you like around it:
 
 | | |
 |---|---|
-| Fan Control | **V285**, both builds: **.NET Framework 4.8** (`FanControl_285_net_4_8`) and **.NET 10** (`FanControl_285_net_10_0`). One DLL works in both. |
-| Windows | Windows 10 and 11, x64 |
-| .NET | Whatever your Fan Control build uses: .NET Framework 4.8 (included in Windows 10 1903+ and Windows 11) or .NET 10 (installed with that Fan Control build) |
-| Hardware | Whatever Fan Control can read. Tested sensor naming: AMD and Intel CPUs; AMD GPUs (ADLX and LibreHardwareMonitor) and NVIDIA GPUs; DDR5 module temperatures. Missing sensors are shown as such, never as zeros. |
+| **Shows** | Any value: the automatically found ones (CPU temperature, GPU hotspot, hottest RAM module, …) or any sensor Fan Control lists. Swapping it also updates the charts that drew the old one. |
+| **Warn at** | A limit. The card shows the headroom ("9 °C below the 40 °C limit"), turns amber when close and red above it, and charts draw a dashed line. RAM can use the limit the modules report themselves. |
+| **Bar** | Any percentage as a bar: a load, a fan's duty. |
+| **Details** | Smaller values under the big one: hotspot and VRAM, package power, every memory module, a pump speed… |
+| **Colour** | Shared with the value's line in every chart, so a card and its line always match. |
 
-Other Fan Control versions may work, but because the dashboard is inserted into Fan Control's own window
-(not an official extension point), any update can change that window. Please [open an issue](../../issues/new/choose)
-with your Fan Control version if the dashboard does not appear.
+**Add a card** opens a sensor picker. It lists the values the dashboard finds by itself first, then every sensor
+grouped by hardware (CPU, GPU, memory, motherboard, storage, Fan Control's own mix and custom sensors), each with its
+**live value**. That way you can tell `Temperature #3` from `Temperature #4` without digging through Fan Control.
+Type to search.
+
+![Adding a card: a searchable list of sensors, grouped by hardware, with their current values](docs/add-card.png)
+
+**Charts** work the same way: add a chart, then add lines from any sensors that share a unit: temperatures, loads,
+fan speeds in rpm, power in watts, clocks, voltages. Every chart scales its own axis.
+
+![A custom card for a water temperature and a chart of two fan speeds](docs/custom-chart.png)
+
+**Display** (in customize mode) holds the options for the whole dashboard: °C or °F, comfortable or compact density,
+charts side by side or stacked, chart height, line smoothing and limit lines. The header switches the history between
+2, 5, 10 and 30 minutes and 1 hour. Click a legend entry to hide a line. **Reset** brings back the default layout.
+
+| Light theme | Collapsed |
+|---|---|
+| ![The dashboard in Fan Control's light theme](docs/light.png) | ![Collapsed: only the header with every card's main value](docs/collapsed.png) |
+
+Collapsed (the chevron in the header), the dashboard takes one line and still shows every card's main value.
 
 ## Install
 
@@ -57,126 +75,105 @@ with your Fan Control version if the dashboard does not appear.
    powershell -ExecutionPolicy Bypass -File .\Install-Dashboard.ps1
    ```
 
-   The script asks for administrator rights once (Fan Control's `Plugins` folder is under Program Files), closes
+   The script asks for administrator rights once (Fan Control's `Plugins` folder is under Program Files). It closes
    Fan Control, copies the plugin, unblocks it and starts Fan Control again. While Fan Control is closed (a few seconds),
    your fans follow the BIOS/firmware settings, as they always do when Fan Control is not running.
-   Use `-FanControlDir "D:\Apps\FanControl"` if Fan Control is not running and not in `C:\Program Files (x86)\FanControl`.
+   If Fan Control is not running and not installed in `C:\Program Files (x86)\FanControl`, add `-FanControlDir "D:\Apps\FanControl"`.
 
 **Manual install**: close Fan Control (tray icon → Exit), copy `FanControl.Dashboard.dll` into Fan Control's `Plugins`
 folder, right-click the DLL → Properties → tick **Unblock** if shown, and start Fan Control.
 
-## Uninstall
+### Uninstall
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Uninstall-Dashboard.ps1            # keeps your dashboard settings
+powershell -ExecutionPolicy Bypass -File .\Uninstall-Dashboard.ps1            # keeps your dashboard layout
 powershell -ExecutionPolicy Bypass -File .\Uninstall-Dashboard.ps1 -RemoveSettings
 ```
 
 Or by hand: close Fan Control, delete `Plugins\FanControl.Dashboard.dll` in Fan Control's folder, start Fan Control.
-Settings are in `%AppData%\FanControl.Dashboard\settings.json`.
+Your layout is stored in `%AppData%\FanControl.Dashboard\settings.json`.
 
-## Settings
+## Compatibility
 
-Open them with the gear icon in the dashboard header. Everything applies and saves immediately
-(`%AppData%\FanControl.Dashboard\settings.json`).
-
-![Custom tab: own sensors as cards and chart lines](docs/settings.png)
-
-| Tab | What you can change |
+| | |
 |---|---|
-| **General** | History charts on/off; layout (*side by side*, *stacked*, *one chart* with a Temperature/Load toggle); chart height; limit lines; **CPU limit** (default 95 °C — set it to your CPU's Tjmax: about 95 °C for Ryzen 7000/9000, 89 °C for Ryzen X3D, 100 °C for most Intel desktop CPUs); **RAM warning** (default: the modules' own reported limit, usually 55 °C). |
-| **Cards** | Which cards are shown and **their order** (arrows); details per card: CPU package power, GPU hotspot/VRAM, RAM amount in use and per-module temperatures. |
-| **Sensors** | **Which sensor** feeds each built-in value — CPU temperature, load and power, GPU temperature, hotspot, VRAM and load, RAM temperature and use. *Automatic* shows what was detected; pick any other sensor Fan Control knows, including its mix and custom sensors. |
-| **Custom** | **Add your own sensors** (up to 16) — a water or case temperature, an SSD, a pump speed, power, voltage, a Fan Control mix sensor… Each gets a name, a card and/or a line in the temperature (°C sensors) or load (% sensors) chart, an optional **limit** (headroom in the card, dashed line in the chart) and a colour. |
-| **Fans** | Which fans the Fans card shows, **their order** and **names** (only in the dashboard; Fan Control keeps its own names). |
-| **Look** | **°C or °F**; *comfortable* or *compact* density; **smoothing** of chart lines (3 / 10 / 30 s moving average; cards always show the latest value); **line colours** of the built-in series. |
+| Fan Control | **V285**, both builds: **.NET Framework 4.8** (`FanControl_285_net_4_8`) and **.NET 10** (`FanControl_285_net_10_0`). One DLL works in both. |
+| Windows | Windows 10 and 11, x64 |
+| Hardware | Whatever Fan Control can read. Automatic values are tested with AMD and Intel CPUs; AMD (ADLX and LibreHardwareMonitor) and NVIDIA GPUs; DDR5 module temperatures. Any other sensor can be added by hand. |
 
-The header toggles the history length: 2, 5, 10, 30 minutes or **1 hour** (history is kept in memory for one hour).
-Click a legend entry to hide or show a line.
-
-| Cards tab | Your own sensors in the dashboard |
-|---|---|
-| ![Cards tab: order, visibility and details](docs/settings-cards.png) | ![Dashboard with custom water and pump cards, a reordered and renamed fan list and the one-hour range](docs/dashboard-custom.png) |
-
-**Reset to defaults** restores every option but keeps what you created: your custom sensors and fan names.
-To start over completely, delete `%AppData%\FanControl.Dashboard\settings.json`.
+Other Fan Control versions may work. The dashboard is inserted into Fan Control's own window, which is not an official
+extension point, so any update can change that window. Please [open an issue](../../issues/new/choose) with your
+Fan Control version if the dashboard does not appear.
 
 ## How it works
 
-- **Sensors**: the plugin reads values through Fan Control's own IPC (`FanControl.IPC`, the named-pipe gRPC service Fan Control
-  exposes for tools), once per second on a background thread. It picks sensors by their identifiers and names
-  (e.g. `Core (Tctl/Tdie)`, `CPU Package`, `/memory/dimm/N/temperature/0`). GPU load comes from Windows performance counters
-  (`GPU Engine`, like Task Manager), memory use from `GlobalMemoryStatusEx`. The fan list comes from the active Fan Control profile.
-- **UI**: Fan Control's plugin API (`IPlugin2`) only provides sensors and controls. The dashboard is a WPF element that the
-  plugin inserts into Fan Control's window: it finds the page of type `HomePage` and its panel named `MainPanel`, and copies
-  the style of an existing `Card` and section header so it looks native. **This is not an official API.** If a Fan Control
-  update renames or restructures that page, the dashboard simply does not appear and a line is written to Fan Control's
-  `log.txt` (prefix `[Dashboard]`); sensors and fan control keep working. All UI code is wrapped so that a failure in the
-  dashboard cannot take Fan Control down.
-- **Resources**: the view only redraws while someone can see it (on screen, window not minimized, keyboard or mouse input
-  in the last 2 minutes). History keeps recording in the background (one hour per series, 14 KB each). Charts draw at most
-  about two points per pixel (keeping each pixel's minimum and maximum), so an hour of data costs no more to draw than two minutes.
+- **Values** come from Fan Control itself, through its local IPC (`FanControl.IPC`, the named-pipe service Fan Control
+  offers to tools), once per second on a background thread. The automatic values pick sensors by their identifiers and
+  names (e.g. `Core (Tctl/Tdie)`, `CPU Package`, `/memory/dimm/N/temperature/0`). GPU load comes from Windows'
+  performance counters (like Task Manager) and memory use from Windows. The fan list is read from the active Fan Control profile.
+- **The view** is a WPF element the plugin inserts into Fan Control's window. It finds the page of type `HomePage` and its
+  panel named `MainPanel`, and copies the style of an existing card and section header. **This is not an official API.**
+  If an update changes that page, the dashboard simply does not appear and a line is written to Fan Control's `log.txt`
+  (prefix `[Dashboard]`); sensors and fan control keep working. All dashboard code is wrapped so that a failure in it
+  cannot take Fan Control down.
+- **Cost**: it redraws only while someone can see it (window visible, not minimized, keyboard or mouse used in the last
+  2 minutes). History keeps one hour per value in memory (14 KB each). Charts draw at most about two points per pixel,
+  so an hour of data costs no more to draw than two minutes.
 
 ## Known issues
 
 - **Out-of-memory investigation (open).** On the author's PC, Fan Control crashed twice with an `OutOfMemoryException`
   in WPF's render thread (process commit around 58 GB) while the dashboard was installed. It could not be reproduced on
   demand and the root cause is **not confirmed**; it is not known whether the dashboard causes it. As mitigation and to
-  collect evidence, the dashboard only draws while it is visible and you were active in the last 2 minutes, and a memory
-  watchdog logs Fan Control's private memory every 30 minutes to `log.txt` and stops all dashboard drawing for the rest of
-  the session if the process grows beyond 2 GB (logging whether growth continues without the dashboard drawing).
-  If you see this crash or `[Dashboard] memory:` lines with growing numbers in Fan Control's `log.txt`, please
+  collect evidence, the dashboard only draws while it is visible and you were active in the last 2 minutes. A memory
+  watchdog logs Fan Control's private memory every 30 minutes to `log.txt`. If the process grows beyond 2 GB, it stops all
+  dashboard drawing for the rest of the session and logs whether the growth continues without the dashboard.
+  If you see this crash, or `[Dashboard] memory:` lines with growing numbers in Fan Control's `log.txt`, please
   [report it](../../issues/new?template=bug_report.yml) with those log lines.
-- **Load sensors show °C.** Fan Control lists plugin sensors as temperatures, so `CPU load %` shows as e.g. `37 °C`
-  in Fan Control's sensor lists; tray icons show only the number.
+- **The .NET 10 build of Fan Control** is verified by CI only. Every test runs and the UI renders under .NET 10, against
+  the assemblies of the official V285 .NET 10 build, including a test that compiles every method of the plugin and one
+  that calls Fan Control's IPC client. Nobody has run it in a real .NET 10 Fan Control yet; reports are welcome.
+- **Load sensors show °C.** The plugin also offers `CPU load %`, `GPU load %` and `RAM used %` as sensors (e.g. for tray
+  icons), and Fan Control lists plugin sensors as temperatures, so they read e.g. `37 °C` in its sensor lists.
 - **History starts empty** after every Fan Control restart (it is kept in memory only).
 - **English only.**
-- **How the .NET 10 build is verified**: the plugin is one .NET Framework 4.8 DLL, which .NET 10 can load. CI runs every test
-  and renders the UI under both runtimes, each against the assemblies of the matching official Fan Control V285 build
-  (including a test that JIT-compiles every method of the plugin and one that calls Fan Control's IPC client). It has
-  not been tried in a running .NET 10 Fan Control yet; reports are welcome.
 
 ## Building
 
-Requirements: Windows, the [.NET SDK](https://dotnet.microsoft.com/download) (8 or newer; 10 for the .NET 10 test run) and Fan Control V285 installed
-(the build compiles against Fan Control's assemblies, which may not be redistributed and are not on NuGet).
+Requirements: Windows, the [.NET SDK](https://dotnet.microsoft.com/download) 8 or newer (10 for the .NET 10 test run),
+and Fan Control V285 installed. The build compiles against Fan Control's assemblies, which may not be redistributed and
+are not on NuGet.
 
 ```powershell
 .\build.ps1                                   # build, test, copy the plugin to dist\
 .\build.ps1 -FanControlDir D:\Apps\FanControl # Fan Control somewhere else (or set FANCONTROL_DIR)
-dotnet build -p:FanControlDir="D:\Apps\FanControl"
-dotnet test
+dotnet test -p:FanControlNet10Dir=C:\path\to\FanControl_285_net_10_0   # also run everything under .NET 10
 ```
 
-To also build and run the tests and the harness under .NET 10 (as Fan Control's .NET 10 build loads the plugin), unzip
-`FanControl_285_net_10_0.zip` from [Fan Control's releases](https://github.com/Rem0o/FanControl.Releases/releases) somewhere
-and pass `-p:FanControlNet10Dir=<that folder>` (or set `FANCONTROL_NET10_DIR`); this needs the .NET 10 SDK. The .NET 10
-harness is then `harness\bin\Release\net10.0-windows\Harness.exe` (set `FANCONTROL_DIR` to the .NET 10 folder when you run it).
-
-Without a .NET SDK, `build.ps1` falls back to the C# compiler of Visual Studio / Build Tools (tests are skipped).
-Then install your build with `dist\Install-Dashboard.ps1`.
+Without a .NET SDK, `build.ps1` falls back to the C# compiler of Visual Studio / Build Tools (the tests are skipped).
+Install your build with `dist\Install-Dashboard.ps1`.
 
 | Path | |
 |---|---|
-| `src/` | The plugin: `Plugin.cs` (entry point, UI injection), `Sampler.cs` (1 Hz sampling over Fan Control's IPC), `SensorMatcher.cs`, `HistoryBuffer.cs`, `Settings.cs`, `Json.cs`, `DashboardView.cs`, `Chart.cs`, `Controls.cs`, `Theme.cs`, `Health.cs` (memory watchdog), `Native.cs` (CPU/RAM/GPU counters) |
-| `tests/` | xUnit tests: settings, JSON, ring buffer, sensor matching, column layout, fan list parsing, and binding/IPC/lifecycle checks against Fan Control's assemblies (run under .NET Framework 4.8 and .NET 10) |
+| `src/` | The plugin. `Plugin.cs` (entry point, adding the view), `DashboardView.cs` (cards, charts, customize mode), `Editors.cs` (card, chart and display editors, sensor picker), `Chart.cs`, `Settings.cs` (layout model and its JSON), `Refs.cs` (value references, names, units, hardware groups), `Sampler.cs` (1 Hz sampling over Fan Control's IPC), `SensorMatcher.cs`, `HistoryBuffer.cs`, `Json.cs`, `Theme.cs`, `Controls*.cs`, `Health.cs` (memory watchdog), `Native.cs` |
+| `tests/` | xUnit tests for the logic, run under .NET Framework 4.8 and .NET 10, and binding, IPC and lifecycle checks against Fan Control's assemblies |
 | `harness/` | Stand-alone host that renders the dashboard to a PNG |
 | `tools/FcTool/` | Developer helper: list Fan Control's sensors and profiles over IPC |
 | `dist/` | Install and uninstall scripts (the built DLL lands here) |
 
 ### The harness
 
-Renders the dashboard without Fan Control's window, with demo data or live sensors:
+Renders the dashboard without Fan Control's window, from demo data or live sensors:
 
 ```powershell
-.\bin\Harness.exe --demo full --theme dark --out dash.png            # csc build; dotnet build: harness\bin\Release\Harness.exe
-.\bin\Harness.exe --demo intel-nvidia --theme light --width 760 --settings --out narrow.png
-.\bin\Harness.exe --live --seconds 10 --hover 0.6 --out live.png     # needs Fan Control running
+.\bin\Harness.exe --demo full --custom --theme dark --out dash.png      # csc build; dotnet: harness\bin\Release\Harness.exe
+.\bin\Harness.exe --demo intel-nvidia --theme light --width 760 --edit --editor card --out picker.png
+.\bin\Harness.exe --live --seconds 10 --hover 0.6 --out live.png        # needs Fan Control running
 ```
 
-Scenarios: `full`, `intel-nvidia`, `ddr4`, `no-gpu`, `no-fans`, `hot`, `starting`. Run it without arguments for all options
-(see the comment at the top of `harness/Harness.cs`). CI renders a set of previews for every pull request (artifact
-`previews-and-test-results`).
+Demo scenarios are `full`, `intel-nvidia`, `ddr4`, `no-gpu`, `no-fans`, `hot` and `starting`. The comment at the top of
+`harness/Harness.cs` lists every option. CI renders a set of previews for every pull request under both runtimes
+(artifact `previews-and-test-results`).
 
 ## License and relationship to Fan Control
 
@@ -184,9 +181,10 @@ This plugin is released under the [MIT License](LICENSE).
 
 Fan Control is proprietary software © Rémi Mercier, free for personal, non-commercial use under its own
 [license](https://github.com/Rem0o/FanControl.Releases/blob/master/LICENSE), which forbids redistributing any part of it.
-This repository therefore contains **no Fan Control files**: you build against your own installation, and CI downloads the
-official release from [Rem0o/FanControl.Releases](https://github.com/Rem0o/FanControl.Releases) at build time without
-publishing it. The plugin uses only the documented plugin interface ([plugin wiki](https://github.com/Rem0o/FanControl.Releases/wiki/Plugins)),
-Fan Control's IPC client library, and Fan Control's window as it appears at runtime; it does not modify or decompile Fan Control.
+This repository therefore contains **no Fan Control files**: you build against your own installation, and CI downloads
+the official releases from [Rem0o/FanControl.Releases](https://github.com/Rem0o/FanControl.Releases) at build time
+without publishing them. The plugin uses only the documented plugin interface
+([plugin wiki](https://github.com/Rem0o/FanControl.Releases/wiki/Plugins)), Fan Control's IPC client library, and
+Fan Control's window as it appears at runtime. It does not modify or decompile Fan Control.
 
-Please do not report dashboard problems to Fan Control's author; use this repository's [issues](../../issues).
+Please don't report dashboard problems to Fan Control's author; use this repository's [issues](../../issues).

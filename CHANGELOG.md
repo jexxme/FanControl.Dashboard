@@ -9,20 +9,23 @@ First public version.
 
 ### Added
 - Dashboard section at the top of Fan Control's Home page: CPU, GPU, RAM and fan cards; temperature and load history
-  charts (side by side, stacked or one chart; 2/5/10/30 minutes) with limit lines, a synced hover crosshair and a clickable legend.
-- Settings panel (gear icon) with six tabs, saved to `%AppData%\FanControl.Dashboard\settings.json`:
-  - **Cards**: show, hide and reorder cards; per-card details (CPU power, GPU hotspot/VRAM, RAM use and modules).
-  - **Sensors**: choose the sensor behind every built-in value instead of the automatic pick (any Fan Control sensor,
-    including mix and custom sensors).
-  - **Custom**: add up to 16 sensors of any type as their own cards and/or chart lines, with name, limit and colour.
-  - **Fans**: show, hide, reorder and rename fans (in the dashboard only).
-  - **Look**: °C or °F, compact density, smoothing of chart lines, line colours.
+  charts with limit lines, a synced hover crosshair and a clickable legend.
+- **Customize mode** on the dashboard itself ("Customize" in the header): click a card or chart to edit it, drag it by its
+  handle (or use the arrows) to reorder it, hide it with the eye, add new ones; Display options and Reset in the same bar.
+  Saved to `%AppData%\FanControl.Dashboard\settings.json` (files of the first version are converted).
+- **Cards for any value**: a main value, a warning limit (headroom, amber/red, dashed line in charts), an optional bar,
+  details and a colour shared with the value's chart lines. CPU, GPU, RAM and Fans are ready-made cards built the same way.
+- **Charts from any sensors** that share a unit (°C, %, rpm, W, MHz, V), each with its own axis; add, remove and reorder them.
+- **Sensor picker** with search, grouped by hardware (CPU, GPU, memory, motherboard, storage, Fan Control's mix and custom
+  sensors) and the live value of every sensor.
+- Fans card: choose, rename and order fans (names change in the dashboard only).
+- Display options: °C or °F, compact density, charts side by side or stacked, chart height, line smoothing, limit lines.
 - History of one hour (2 / 5 / 10 / 30 / 60 minutes); charts draw at most about two points per pixel.
 - Plugin sensors `CPU load %`, `GPU load %`, `RAM used %`.
 - Works in both Fan Control V285 builds, .NET Framework 4.8 and .NET 10, with the same DLL. JSON is now read and written
   by the plugin itself instead of `System.Web.Extensions` (which .NET 10 does not have); the settings file format is unchanged.
 - Sensor detection for Intel CPUs and NVIDIA GPUs (LibreHardwareMonitor naming) besides AMD CPUs and AMD GPUs (ADLX).
-- The RAM warning can follow the modules' own reported threshold (DDR5 SPD hub); new option, on by default.
+- The RAM card's warning can follow the modules' own reported threshold (DDR5 SPD hub).
 - States for missing hardware: no GPU sensors; no module temperatures (DDR4 and many laptops: shows memory in use instead);
   no enabled fan controls; waiting for Fan Control; no new values from Fan Control. Legends list only series that have data.
 - Light theme support with separate series and status colours; the view restyles when Fan Control's theme changes.

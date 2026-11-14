@@ -9,14 +9,13 @@ using System.Windows.Media;
 
 namespace FanControl.Dashboard
 {
-    /// <summary>One line in a chart (built-in or a sensor the user added).</summary>
+    /// <summary>One line in a chart.</summary>
     sealed class SeriesDef
     {
-        public string Name, Short, Key, Unit; public Brush Brush;
-        /// <summary>Limit line for this series in °C (NaN = none) and its label, e.g. "CPU limit".</summary>
+        public string Ref, Key, Name, Short, Unit; public Brush Brush;
+        /// <summary>Limit line in the value's unit (°C for temperatures), NaN for none, and its label (e.g. "CPU limit").</summary>
         public Func<double> Limit = () => double.NaN;
         public string LimitLabel;
-        public SeriesDef(string name, string key, Brush brush, string unit, string shortName = null) { Name = name; Key = key; Brush = brush; Unit = unit; Short = shortName ?? name; }
     }
 
     /// <summary>Line chart of the sampler history with grid, limit lines, direct labels and a (synced) hover crosshair.</summary>
@@ -27,31 +26,33 @@ namespace FanControl.Dashboard
         static Pen CrossPen { get { return Frozen(new Pen(Palette.TextMuted, 1)); } }
         static Pen DashPen(Brush b) { return Frozen(new Pen(b, 1) { DashStyle = new DashStyle(new double[] { 4, 3 }, 0) }); }
 
-        const double Left = 36, Top = 10, Bottom = 22, Gutter = 104;
+        const double Top = 10, Bottom = 22, Gutter = 108;
         readonly Settings _settings;
-        readonly Sampler _sampler;
         Point? _mouse;
         double? _sync;
-        SeriesDef[] _temp = new SeriesDef[0], _load = new SeriesDef[0];
+        SeriesDef[] _series = new SeriesDef[0];
 
-        public int Mode { get; set; }
         public int Points { get; set; }
+        /// <summary>Unit of every line in this chart ("°C", "%", "rpm", ...).</summary>
+        public string Unit { get; set; }
         public Action<Chart, double> HoverChanged;
-        public SeriesDef[] AllSeries { get { return Mode == 0 ? _temp : _load; } }
-        /// <summary>Whether a series has a sensor at all (set by the card); unavailable series are neither drawn nor listed.</summary>
-        public Func<string, bool> IsAvailable = key => true;
-        SeriesDef[] Visible { get { return AllSeries.Where(s => IsAvailable(s.Key) && !_settings.IsHidden(Mode, s.Key)).ToArray(); } }
+        public SeriesDef[] AllSeries { get { return _series; } }
+        /// <summary>Whether a line has a sensor at all (set by the card); unavailable lines are neither drawn nor listed.</summary>
+        public Func<string, bool> IsAvailable = r => true;
+        /// <summary>Whether the user hid a line by clicking its legend entry.</summary>
+        public Func<string, bool> IsHidden = r => false;
+        SeriesDef[] Visible { get { return _series.Where(s => IsAvailable(s.Ref) && !IsHidden(s.Ref)).ToArray(); } }
 
-        public Chart(Settings settings) : this(settings, null) { }
-        public Chart(Settings settings, Sampler sampler) { _settings = settings; _sampler = sampler; Points = 600; ClipToBounds = true; }
+        public Chart(Settings settings) { _settings = settings; Points = 600; ClipToBounds = true; Unit = "°C"; }
 
         internal static Sampler Source; // set by the view; one sampler per process
 
-        public void SetSeries(SeriesDef[] temperature, SeriesDef[] load) { _temp = temperature; _load = load; InvalidateVisual(); }
+        public void SetSeries(SeriesDef[] series) { _series = series ?? new SeriesDef[0]; InvalidateVisual(); }
 
         static Pen Frozen(Pen p) { p.Freeze(); return p; }
 
-        Rect Plot { get { return new Rect(Left, Top, Math.Max(10, ActualWidth - Left - Gutter), Math.Max(10, ActualHeight - Top - Bottom)); } }
+        double LeftMargin { get { return Unit == "rpm" || Unit == "MHz" ? 44 : 36; } }
+        Rect Plot { get { return new Rect(LeftMargin, Top, Math.Max(10, ActualWidth - LeftMargin - Gutter), Math.Max(10, ActualHeight - Top - Bottom)); } }
 
         public void Hover(double fraction)
         {
@@ -60,7 +61,7 @@ namespace FanControl.Dashboard
             InvalidateVisual();
         }
 
-        /// <summary>Crosshair driven by the other chart (no tooltip).</summary>
+        /// <summary>Crosshair driven by another chart (no tooltip).</summary>
         public void Sync(double fraction)
         {
             _sync = fraction < 0 ? (double?)null : fraction;
@@ -89,38 +90,23 @@ namespace FanControl.Dashboard
         void Centered(DrawingContext dc, Rect plot, string message)
         {
             var t = Text(message, Palette.TextMuted, 12);
+            t.MaxTextWidth = Math.Max(40, plot.Width - 20);
             var back = new Rect(plot.Left + (plot.Width - t.Width) / 2 - 10, plot.Top + (plot.Height - t.Height) / 2 - 5, t.Width + 20, t.Height + 10);
             dc.DrawRoundedRectangle(Palette.Card, null, back, 4, 4);
             dc.DrawText(t, new Point(back.Left + 10, back.Top + 5));
         }
 
-        /// <summary>The y-axis range in display units: temperatures keep 30/20 to at least 100 °C (212 °F), load is 0..100.</summary>
-        static void Axis(int mode, double min, double max, double plotHeight, out double lo, out double hi, out double step)
-        {
-            if (mode != 0) { lo = 0; hi = Math.Max(100, Math.Ceiling(max / 25) * 25); step = plotHeight < 150 ? 50 : 25; return; }
-            if (!Units.Fahrenheit)
-            {
-                lo = min < 30 ? Math.Min(20, Math.Floor((min - 2) / 10) * 10) : 30;
-                hi = Math.Max(100, Math.Ceiling((max + 2) / 10) * 10);
-                step = hi - lo > 80 ? 20 : 10;
-            }
-            else
-            {
-                lo = min < 86 ? Math.Min(60, Math.Floor((min - 4) / 20) * 20) : 80;
-                hi = Math.Max(220, Math.Ceiling((max + 4) / 20) * 20);
-                step = hi - lo > 160 ? 40 : 20;
-            }
-            if (plotHeight < 150) step *= 2;
-        }
+        bool Temps { get { return Unit == "°C"; } }
+        string UnitLabel { get { return Units.DisplayUnit(Unit); } }
 
         protected override void OnRender(DrawingContext dc)
         {
-            var sampler = _sampler ?? Source;
+            var sampler = Source;
             double W = ActualWidth, H = ActualHeight;
             dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, W, H)); // hit-test surface
             if (sampler == null || W < 60 || H < 40) return;
             var plot = Plot;
-            bool temps = Mode == 0;
+            bool temps = Temps;
             Func<float, float> show = v => temps ? Units.ToDisplay(v) : v;
 
             var series = Visible;
@@ -135,24 +121,25 @@ namespace FanControl.Dashboard
                 }
 
             var all = data.SelectMany(a => a).Where(v => !float.IsNaN(v)).ToList();
-            double max = all.DefaultIfEmpty(temps ? 0f : 0f).Max(), min = all.DefaultIfEmpty(temps ? (float)Units.ToDisplay(40.0) : 0f).Min();
-            foreach (var l in limits) max = Math.Max(max, l.Item2);
+            double max = all.Count == 0 ? double.NaN : all.Max(), min = all.Count == 0 ? double.NaN : all.Min();
+            foreach (var l in limits) { max = double.IsNaN(max) ? l.Item2 : Math.Max(max, l.Item2); min = double.IsNaN(min) ? l.Item2 : Math.Min(min, l.Item2); }
             double lo, hi, step;
-            Axis(Mode, min, max, plot.Height, out lo, out hi, out step);
+            ChartMath.Axis(Unit, Units.Fahrenheit, min, max, plot.Height, out lo, out hi, out step);
             Func<double, double> Y = v => plot.Bottom - (Math.Max(lo, Math.Min(hi, v)) - lo) / (hi - lo) * plot.Height;
             Func<int, double> X = i => plot.Left + (Points <= 1 ? 0 : i * plot.Width / (Points - 1));
 
             // grid + y labels
-            for (double v = lo; v <= hi + 0.01; v += step)
+            for (double v = lo; v <= hi + step * 0.01; v += step)
             {
                 double y = Math.Round(Y(v)) + 0.5;
                 dc.DrawLine(GridPen, new Point(plot.Left, y), new Point(plot.Right, y));
-                var t = Text(v.ToString("0", Inv), Palette.TextMuted);
-                dc.DrawText(t, new Point(Left - 8 - t.Width, y - t.Height / 2));
+                var t = Text(ChartMath.Tick(v, step), Palette.TextMuted);
+                dc.DrawText(t, new Point(plot.Left - 8 - t.Width, y - t.Height / 2));
             }
             // x labels
             int minutes = Points / 60;
-            var xl = new[] { Tuple.Create(0.0, "-" + minutes + " min"), Tuple.Create(0.5, "-" + (minutes / 2.0).ToString("0.#", Inv) + " min"), Tuple.Create(1.0, "now") };
+            Func<double, string> ago = m => m >= 60 && m % 60 == 0 ? "-" + (m / 60).ToString("0", Inv) + " h" : "-" + m.ToString("0.#", Inv) + " min";
+            var xl = new[] { Tuple.Create(0.0, ago(minutes)), Tuple.Create(0.5, ago(minutes / 2.0)), Tuple.Create(1.0, "now") };
             foreach (var l in xl)
             {
                 var t = Text(l.Item2, Palette.TextMuted);
@@ -164,13 +151,14 @@ namespace FanControl.Dashboard
             foreach (var l in limits)
             {
                 double y = Math.Round(Y(l.Item2)) + 0.5;
-                dc.DrawLine(DashPen(l.Item1.Key == "cpu.temp" ? Palette.Limit : l.Item1.Brush), new Point(plot.Left, y), new Point(plot.Right, y));
-                limitLabels.Add(Tuple.Create(y, (l.Item1.LimitLabel ?? l.Item1.Name + " limit") + " " + l.Item2.ToString("0", Inv) + (temps ? " " + Units.Temp : " %")));
+                dc.DrawLine(DashPen(Palette.Limit), new Point(plot.Left, y), new Point(plot.Right, y));
+                limitLabels.Add(Tuple.Create(y, l.Item1.LimitLabel + " " + ChartMath.Tick(l.Item2, 1) + " " + UnitLabel));
             }
 
+            if (_series.Length == 0) { Centered(dc, plot, "No lines yet. Customize the dashboard to add some."); return; }
             if (series.Length == 0)
             {
-                Centered(dc, plot, AllSeries.Length == 0 ? "No lines in this chart." : "All lines are hidden. Click a legend entry to show it again.");
+                Centered(dc, plot, _series.Any(s => IsAvailable(s.Ref)) ? "All lines are hidden. Click a legend entry to show it again." : "Waiting for these sensors…");
                 return;
             }
             if (data.All(a => a.All(float.IsNaN)))
@@ -230,10 +218,11 @@ namespace FanControl.Dashboard
                 double limit = k == ends.Count - 1 ? plot.Bottom + 4 : ys[k + 1] - 14;
                 if (ys[k] > limit) ys[k] = limit;
             }
+            string endUnit = temps ? "°" : Unit == "%" ? " %" : "";
             for (int k = 0; k < ends.Count; k++)
             {
                 var e = ends[k];
-                var t = Text(e.Item3.ToString("0", Inv) + (temps ? "°" : " %") + "  " + e.Item2.Short, Palette.Text, 11);
+                var t = Text(e.Item3.ToString(ChartMath.ValueFormat(Unit), Inv) + endUnit + "  " + e.Item2.Short, Palette.Text, 11);
                 t.MaxTextWidth = Gutter - 20; t.MaxLineCount = 1; t.Trimming = TextTrimming.CharacterEllipsis;
                 // a short leader from the line end to its label, bent when the label had to move to avoid another one
                 var leader = Frozen(new Pen(e.Item2.Brush, 1.5));
@@ -259,11 +248,11 @@ namespace FanControl.Dashboard
                     if (!float.IsNaN(v)) dc.DrawEllipse(series[s].Brush, new Pen(Palette.Card, 2), new Point(X(i), Y(v)), 4.5, 4.5);
                 }
                 if (!own) return;
-                int ago = Points - 1 - i;
-                string when = ago == 0 ? "now" : ago < 60 ? ago + " s ago" : (ago / 60) + " min " + (ago % 60).ToString("00") + " s ago";
+                int secs = Points - 1 - i;
+                string when = secs == 0 ? "now" : secs < 60 ? secs + " s ago" : (secs / 60) + " min " + (secs % 60).ToString("00") + " s ago";
                 var head = Text(when + (_settings.Smoothing > 0 ? " · smoothed" : ""), Palette.TextDim, 11);
-                string unit = temps ? Units.Temp : "%";
-                var lines = rows.Select(r => Text(r.Item1.Name + "   " + (float.IsNaN(r.Item2) ? "–" : r.Item2.ToString("0.0", Inv) + " " + unit), Palette.Text, 11.5)).ToList();
+                string fmt = Unit == "rpm" || Unit == "MHz" ? "0" : "0.0";
+                var lines = rows.Select(r => Text(r.Item1.Name + "   " + (float.IsNaN(r.Item2) ? "–" : r.Item2.ToString(fmt, Inv) + " " + UnitLabel), Palette.Text, 11.5)).ToList();
                 double bw = Math.Max(head.Width, lines.Max(l => l.Width) + 14) + 20, bh = 12 + head.Height + lines.Sum(l => l.Height + 3) + 6;
                 double bx = x + 12; if (bx + bw > plot.Right) bx = Math.Max(2, x - 12 - bw); // keep clear of the end labels
                 double by = Math.Max(plot.Top, Math.Min(_mouse.Value.Y - bh / 2, plot.Bottom - bh));
