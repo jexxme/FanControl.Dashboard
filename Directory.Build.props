@@ -13,6 +13,14 @@
     <!-- separate property: a FanControlDir passed with -p: is global and cannot be modified here -->
     <FanControlRefDir>$([MSBuild]::EnsureTrailingSlash('$(FanControlDir)'))</FanControlRefDir>
 
+    <!--
+      Optional: the assemblies of Fan Control's .NET 10 build. When set, the tests and the harness are also built for
+      net10.0-windows and run the net48 plugin DLL under .NET 10 against those assemblies, as Fan Control's .NET 10 build does.
+      dotnet test -p:FanControlNet10Dir="C:\path	o\FanControl_net_10_0"   (or FANCONTROL_NET10_DIR)
+    -->
+    <FanControlNet10Dir Condition="'$(FanControlNet10Dir)' == '' and '$(FANCONTROL_NET10_DIR)' != ''">$(FANCONTROL_NET10_DIR)</FanControlNet10Dir>
+    <Net10TargetFramework Condition="'$(FanControlNet10Dir)' != ''">;net10.0-windows</Net10TargetFramework>
+
     <Version>0.1.0</Version>
     <Authors>fancontrol-dashboard contributors</Authors>
     <Product>Fan Control Dashboard (unofficial plugin)</Product>

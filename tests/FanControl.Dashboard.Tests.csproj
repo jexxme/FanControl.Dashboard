@@ -1,8 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <!-- net48 always; net10.0-windows when FanControlNet10Dir is set (see Directory.Build.props) -->
+    <TargetFramework></TargetFramework>
+    <TargetFrameworks>net48$(Net10TargetFramework)</TargetFrameworks>
     <AssemblyName>FanControl.Dashboard.Tests</AssemblyName>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- the .NET Framework run keeps the old output folder; the .NET 10 run gets its own -->
+    <AppendTargetFrameworkToOutputPath Condition="'$(TargetFramework)' != 'net48'">true</AppendTargetFrameworkToOutputPath>
+    <UseWPF Condition="'$(TargetFramework)' != 'net48'">true</UseWPF>
+    <!-- a net10 project referencing the net48 plugin is exactly what is being tested -->
+    <NoWarn>$(NoWarn);NU1702;MSB3270</NoWarn>
+    <FanControlTestDir Condition="'$(TargetFramework)' == 'net48'">$(FanControlRefDir)</FanControlTestDir>
+    <FanControlTestDir Condition="'$(TargetFramework)' != 'net48'">$([MSBuild]::EnsureTrailingSlash('$(FanControlNet10Dir)'))</FanControlTestDir>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,7 +25,24 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="System.Web.Extensions" />
     <ProjectReference Include="..\src\FanControl.Dashboard.csproj" />
+    <!-- the same netstandard2.0 library in both Fan Control builds; copied next to the tests so xunit can load the fakes -->
+    <Reference Include="FanControl.Plugins"><HintPath>$(FanControlTestDir)FanControl.Plugins.dll</HintPath><Private>true</Private></Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <Reference Include="System.Web.Extensions" /> <!-- only to compare with the old serializer -->
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="System.Xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- where the remaining Fan Control assemblies (IPC, gRPC, ...) are loaded from at test time, see FanControlAssemblies.cs -->
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>FanControlDir</_Parameter1>
+      <_Parameter2>$(FanControlTestDir)</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
 </Project>

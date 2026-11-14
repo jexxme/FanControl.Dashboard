@@ -1,13 +1,22 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Stand-alone host that renders the dashboard view to PNG files without a Fan Control window. -->
+  <!--
+    Stand-alone host that renders the dashboard view to PNG files without a Fan Control window.
+    net48 always; net10.0-windows too when FanControlNet10Dir is set: that build loads the same net48 plugin DLL under
+    .NET 10, like Fan Control's .NET 10 build does.
+  -->
   <PropertyGroup>
+    <TargetFramework></TargetFramework>
+    <TargetFrameworks>net48$(Net10TargetFramework)</TargetFrameworks>
     <OutputType>WinExe</OutputType>
     <AssemblyName>Harness</AssemblyName>
     <RootNamespace>Harness</RootNamespace>
     <IsPackable>false</IsPackable>
+    <AppendTargetFrameworkToOutputPath Condition="'$(TargetFramework)' != 'net48'">true</AppendTargetFrameworkToOutputPath>
+    <UseWPF Condition="'$(TargetFramework)' != 'net48'">true</UseWPF>
+    <NoWarn>$(NoWarn);NU1702;MSB3270</NoWarn>
   </PropertyGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
     <Reference Include="WindowsBase" />

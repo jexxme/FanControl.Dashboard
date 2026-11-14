@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Web.Script.Serialization;
 
 namespace FanControl.Dashboard
 {
@@ -50,7 +49,7 @@ namespace FanControl.Dashboard
         }
 
         /// <summary>Where to save; null keeps the settings in memory only (harness).</summary>
-        [ScriptIgnore] public string FilePath;
+        public string FilePath;
 
         public event Action Changed;
 
@@ -64,7 +63,7 @@ namespace FanControl.Dashboard
             Settings s = null;
             try
             {
-                if (!string.IsNullOrEmpty(path) && File.Exists(path)) s = new JavaScriptSerializer().Deserialize<Settings>(File.ReadAllText(path));
+                if (!string.IsNullOrEmpty(path) && File.Exists(path)) s = FromJson(File.ReadAllText(path));
             }
             catch (Exception ex) { if (log != null) log("settings unreadable, using defaults: " + ex.Message); }
             s = s ?? new Settings();
@@ -132,6 +131,51 @@ namespace FanControl.Dashboard
             }
         }
 
+        /// <summary>
+        /// Reads the settings file. Unknown fields are ignored, and a field with the wrong type keeps its default;
+        /// text that is not a JSON object throws (the caller falls back to defaults).
+        /// </summary>
+        internal static Settings FromJson(string text)
+        {
+            var d = Json.Parse(text) as Dictionary<string, object>;
+            if (d == null) throw new FormatException("settings.json does not contain a JSON object");
+            var s = new Settings();
+            bool b; double n;
+            if (Bool(d, "Collapsed", out b)) s.Collapsed = b;
+            if (Bool(d, "ShowCpu", out b)) s.ShowCpu = b;
+            if (Bool(d, "ShowGpu", out b)) s.ShowGpu = b;
+            if (Bool(d, "ShowRam", out b)) s.ShowRam = b;
+            if (Bool(d, "ShowFans", out b)) s.ShowFans = b;
+            if (Bool(d, "ShowCharts", out b)) s.ShowCharts = b;
+            if (Number(d, "Layout", out n)) s.Layout = (ChartLayout)(int)n;
+            if (Number(d, "SingleMode", out n)) s.SingleMode = (int)n;
+            if (Number(d, "RangeMinutes", out n)) s.RangeMinutes = (int)n;
+            if (Number(d, "ChartHeight", out n)) s.ChartHeight = (int)n;
+            if (Bool(d, "ShowLimits", out b)) s.ShowLimits = b;
+            if (Number(d, "CpuLimit", out n)) s.CpuLimit = n;
+            if (Number(d, "RamWarning", out n)) s.RamWarning = n;
+            if (Bool(d, "RamWarningAuto", out b)) s.RamWarningAuto = b;
+            object o;
+            var hidden = d.TryGetValue("HiddenSeries", out o) ? o as List<object> : null;
+            if (hidden != null) foreach (var h in hidden) { var id = h as string; if (id != null) s.HiddenSeries.Add(id); }
+            return s;
+        }
+
+        static bool Bool(Dictionary<string, object> d, string key, out bool value)
+        {
+            object o; value = false;
+            if (!d.TryGetValue(key, out o) || !(o is bool)) return false;
+            value = (bool)o; return true;
+        }
+
+        static bool Number(Dictionary<string, object> d, string key, out double value)
+        {
+            object o; value = 0;
+            if (!d.TryGetValue(key, out o) || !(o is int || o is long || o is double)) return false;
+            value = Convert.ToDouble(o, System.Globalization.CultureInfo.InvariantCulture);
+            return !double.IsNaN(value) && Math.Abs(value) < 1e9;
+        }
+
         /// <summary>The JSON written to disk (stable field order, enum as number).</summary>
         internal string ToJson()
         {
@@ -142,7 +186,7 @@ namespace FanControl.Dashboard
                 { "RangeMinutes", RangeMinutes }, { "ChartHeight", ChartHeight }, { "ShowLimits", ShowLimits },
                 { "CpuLimit", CpuLimit }, { "RamWarning", RamWarning }, { "RamWarningAuto", RamWarningAuto }, { "HiddenSeries", HiddenSeries },
             };
-            return new JavaScriptSerializer().Serialize(copy);
+            return Json.Write(copy);
         }
 
         /// <summary>Notifies the view and writes the file (errors are ignored: settings are a convenience).</summary>

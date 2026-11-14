@@ -15,7 +15,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       - name: Check the tag matches the project version
         shell: pwsh
@@ -24,14 +24,23 @@ jobs:
           if ("v$version" -ne '${{ github.ref_name }}') { throw "Tag ${{ github.ref_name }} does not match <Version>$version</Version> in Directory.Build.props" }
           if (-not (Select-String -Path CHANGELOG.md -Pattern "^## \[$([regex]::Escape($version))\]" -Quiet)) { throw "CHANGELOG.md has no section for $version" }
 
-      - name: Fan Control reference assemblies
+      - name: Fan Control V285 (.NET Framework 4.8 build)
         id: fc
         uses: ./.github/actions/fancontrol-refs
 
+      - name: Fan Control V285 (.NET 10 build)
+        id: fc10
+        uses: ./.github/actions/fancontrol-refs
+        with:
+          asset: FanControl_285_net_10_0.zip
+          sha256: 8ddd0819cdaa435be06e37750c5317365375a6f3d75f6c1366fdbb2ea986359d
+
       - name: Build and test
         run: |
-          dotnet build FanControl.Dashboard.sln -c Release -p:FanControlDir="${{ steps.fc.outputs.dir }}" -nologo
-          dotnet test FanControl.Dashboard.sln -c Release --no-build -p:FanControlDir="${{ steps.fc.outputs.dir }}" -nologo
+          dotnet build FanControl.Dashboard.sln -c Release -p:FanControlDir="${{ steps.fc.outputs.dir }}" -p:FanControlNet10Dir="${{ steps.fc10.outputs.dir }}" -nologo
+          if ($LASTEXITCODE) { exit 1 }
+          dotnet test FanControl.Dashboard.sln -c Release --no-build -p:FanControlDir="${{ steps.fc.outputs.dir }}" -p:FanControlNet10Dir="${{ steps.fc10.outputs.dir }}" -nologo
+          if ($LASTEXITCODE) { exit 1 }
 
       - name: Package
         shell: pwsh

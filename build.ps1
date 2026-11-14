@@ -61,7 +61,7 @@ Write-Host 'No .NET SDK found: building with Visual Studio''s csc.exe (tests are
 $version = ([xml](Get-Content "$root\Directory.Build.props")).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
 $fw = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319"
 $refs = @("$fw\WPF\PresentationFramework.dll", "$fw\WPF\PresentationCore.dll", "$fw\WPF\WindowsBase.dll", "$fw\System.Xaml.dll",
-          "$fw\System.Web.Extensions.dll", "$fw\System.Core.dll", "$fw\netstandard.dll", "$fw\WPF\UIAutomationProvider.dll", "$fw\WPF\UIAutomationTypes.dll") | ForEach-Object { "-r:$_" }
+          "$fw\System.Core.dll", "$fw\netstandard.dll", "$fw\WPF\UIAutomationProvider.dll", "$fw\WPF\UIAutomationTypes.dll") | ForEach-Object { "-r:$_" }
 $fcRefs = 'FanControl.Plugins', 'FanControl.IPC', 'Grpc.Core.Api', 'Google.Protobuf' | ForEach-Object { "-r:$FanControlDir\$_.dll" }
 $bin = Join-Path $root 'bin'
 New-Item -ItemType Directory -Force $bin | Out-Null

@@ -9,12 +9,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- .NET Framework 4.8 assemblies (resolved from the reference assemblies package on machines without the targeting pack) -->
+    <!-- .NET Framework 4.8 assemblies (resolved from the reference assemblies package on machines without the targeting pack).
+         Only what also exists in .NET 10 (Microsoft.WindowsDesktop.App), so the DLL loads in both Fan Control builds. -->
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
     <Reference Include="WindowsBase" />
     <Reference Include="System.Xaml" />
-    <Reference Include="System.Web.Extensions" />
     <Reference Include="UIAutomationProvider" />
     <Reference Include="UIAutomationTypes" />
   </ItemGroup>

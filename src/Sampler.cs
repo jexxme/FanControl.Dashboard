@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
-using System.Web.Script.Serialization;
 
 namespace FanControl.Dashboard
 {
@@ -211,8 +210,7 @@ namespace FanControl.Dashboard
                 string cache = Path.Combine(dir, "Configurations", "CACHE");
                 if (!File.Exists(cache)) cache = @"C:\Program Files (x86)\FanControl\Configurations\CACHE";
                 if (!File.Exists(cache)) return;
-                var js = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
-                var c = js.DeserializeObject(File.ReadAllText(cache)) as Dictionary<string, object>;
+                var c = Json.Parse(File.ReadAllText(cache)) as Dictionary<string, object>;
                 if (c == null) return;
                 string folder = c.ContainsKey("CustomConfigFolder") ? c["CustomConfigFolder"] as string : null;
                 if (string.IsNullOrEmpty(folder)) folder = Path.GetDirectoryName(cache);
@@ -224,7 +222,7 @@ namespace FanControl.Dashboard
                 if (path == _configPath && stamp == _configStamp) return;
                 _configPath = path; _configStamp = stamp; ConfigName = Path.GetFileNameWithoutExtension(file);
 
-                var list = FanList.Parse(js.DeserializeObject(File.ReadAllText(path)) as Dictionary<string, object>);
+                var list = FanList.Parse(Json.Parse(File.ReadAllText(path)) as Dictionary<string, object>);
                 lock (_lock) _fans = list;
             }
             catch (Exception ex) { _log("config read failed: " + ex.Message); }
