@@ -10,8 +10,8 @@ First public version.
 ### Added
 - Dashboard section at the top of Fan Control's Home page: CPU, GPU, RAM and fan cards; temperature and load history
   charts with limit lines, a synced hover crosshair and a clickable legend.
-- **Customize mode** on the dashboard itself ("Customize" in the header): click a card or chart to edit it, drag it by its
-  handle (or use the arrows) to reorder it, hide it with the eye, add new ones; Display options and Reset in the same bar.
+- **Customize mode** on the dashboard itself ("Customize" in the header): click a card or chart to edit it, drag it to
+  reorder it (or use the arrows), hide it with the eye, add new ones; Display options and Reset in the same bar.
   Saved to `%AppData%\FanControl.Dashboard\settings.json` (files of the first version are converted).
 - **Cards for any value**: a main value, a warning limit (headroom, amber/red, dashed line in charts), an optional bar,
   details and a colour shared with the value's chart lines. CPU, GPU, RAM and Fans are ready-made cards built the same way.
