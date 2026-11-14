@@ -30,6 +30,9 @@ using FanControl.Dashboard;
 //     --settings              open the settings panel
 //     --collapsed             collapse the section
 //     --hide <keys>           comma-separated legend entries to hide, e.g. 0:gpu.vram
+//     --tab <0..5>            with --settings: General, Cards, Sensors, Custom, Fans, Look
+//     --custom                demo mode: add example custom sensors (water temperature, pump, motherboard)
+//     --fahrenheit, --compact, --smooth <seconds>, --reorder    look options and a changed card/fan order
 //
 // Fan Control's assemblies are loaded from FANCONTROL_DIR or C:\Program Files (x86)\FanControl.
 static class Harness
@@ -70,18 +73,23 @@ static class Harness
         bool settingsOpen = a.Contains("--settings");
         bool collapsed = a.Contains("--collapsed");
         string hide = Opt(a, "--hide", null);
+        int tab = int.Parse(Opt(a, "--tab", "0"), Inv);
 
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         bool light = theme == "light";
         Color page = theme == "plain" ? Color.FromRgb(0x2B, 0x2B, 0x2B) : light ? Color.FromRgb(0xF3, 0xF3, 0xF3) : Color.FromRgb(0x20, 0x20, 0x20);
         if (theme != "plain") LoadMaterialDesign(app, light);
 
+        var settings = new Settings { Collapsed = collapsed, Fahrenheit = a.Contains("--fahrenheit"), Compact = a.Contains("--compact") };
+        settings.Smoothing = int.Parse(Opt(a, "--smooth", "0"), Inv);
+        if (hide != null) settings.HiddenSeries.AddRange(hide.Split(','));
+        if (!live && a.Contains("--custom")) Demo.AddCustom(settings);
+        if (!live && a.Contains("--reorder")) Demo.Reorder(settings);
+        settings.Sanitize();
+
         var sampler = new Sampler(Console.WriteLine);
         if (live) sampler.Start();
-        else Demo.Fill(sampler, scenario);
-
-        var settings = new Settings { Collapsed = collapsed };
-        if (hide != null) settings.HiddenSeries.AddRange(hide.Split(','));
+        else Demo.Fill(sampler, scenario, settings);
         var host = new StackPanel { Background = new SolidColorBrush(page), Width = width + 24 };
         var win = new Window
         {
@@ -117,7 +125,7 @@ static class Harness
             timer.Tick += (o, ev) =>
             {
                 timer.Stop();
-                view.Debug(layout, range, hover, settingsOpen);
+                view.Debug(layout, range, hover, settingsOpen, tab);
                 win.UpdateLayout();
                 Dispatcher.CurrentDispatcher.BeginInvoke(new Action(() =>
                 {
@@ -170,8 +178,37 @@ static class Harness
 /// <summary>Synthetic sensor data for screenshots and UI checks. Deterministic, contains nothing about a real machine.</summary>
 static class Demo
 {
-    public static void Fill(Sampler sampler, string scenario)
+    /// <summary>Sensors the pickers offer in demo mode (names like LibreHardwareMonitor and Fan Control report them).</summary>
+    static readonly SensorInfo[] Catalog =
     {
+        new SensorInfo("/amdcpu/0/temperature/2", "Temperature", "Core (Tctl/Tdie)"), new SensorInfo("/amdcpu/0/temperature/3", "Temperature", "CCD1 (Tdie)"),
+        new SensorInfo("/amdcpu/0/load/0", "UsagePercent", "CPU Total"), new SensorInfo("/amdcpu/0/power/0", "Power", "Package"),
+        new SensorInfo("ADLX/AMD Radeon RX 7800 XT/0/temp/GPU", "Temperature", "GPU"), new SensorInfo("ADLX/AMD Radeon RX 7800 XT/0/temp/Hotspot", "Temperature", "Hotspot"),
+        new SensorInfo("ADLX/AMD Radeon RX 7800 XT/0/temp/Memory", "Temperature", "Memory"), new SensorInfo("/ram/load/0", "UsagePercent", "Memory"),
+        new SensorInfo("/memory/dimm/1/temperature/0", "Temperature", "DIMM #1"), new SensorInfo("/memory/dimm/3/temperature/0", "Temperature", "DIMM #2"),
+        new SensorInfo("/lpc/it8688e/temperature/0", "Temperature", "System"), new SensorInfo("/lpc/it8688e/temperature/1", "Temperature", "Chipset"),
+        new SensorInfo("/lpc/it8688e/fan/4", "Rpm", "Fan #5"), new SensorInfo("/lpc/it8688e/control/4", "Control", "Fan #5"),
+        new SensorInfo("Mix/Water", "Temperature", "Water"), new SensorInfo("/nvme/0/temperature/0", "Temperature", "Composite Temperature"),
+    };
+
+    public static void AddCustom(Settings s)
+    {
+        var water = s.AddCustom("Mix/Water", "Water", "°C"); water.Limit = 40;
+        var pump = s.AddCustom("/lpc/it8688e/fan/4", "Pump", "rpm");
+        var nvme = s.AddCustom("/nvme/0/temperature/0", "NVMe SSD", "°C"); nvme.ShowCard = false; nvme.Color = "slate";
+    }
+
+    public static void Reorder(Settings s)
+    {
+        s.MoveCard("fans", -3);
+        s.MoveCard("fans", -1); s.MoveCard("fans", -1); s.MoveCard("fans", -1);
+        s.Fan("c3").Hidden = true;
+        s.Fan("c0").Name = "Noctua NH-D15";
+    }
+
+    public static void Fill(Sampler sampler, string scenario, Settings settings)
+    {
+        sampler.SetCatalog(new List<SensorInfo>(Catalog));
         bool intel = scenario == "intel-nvidia", ddr4 = scenario == "ddr4" || intel, noGpu = scenario == "no-gpu", noFans = scenario == "no-fans", hot = scenario == "hot";
         bool starting = scenario == "starting";
         var fans = noFans ? new List<FanInfo>() : new List<FanInfo>
@@ -229,6 +266,12 @@ static class Demo
                 v["duty:c3"] = (float)Math.Round(caseDuty * 0.8); v["rpm:r3"] = (float)(caseDuty * 0.8 * 13.9);
                 v["duty:c4"] = noGpu ? 70 : (float)(gpuL > 40 ? 38 + gpuL * 0.2 : 0);
                 if (noGpu) v["rpm:r4"] = 2780;
+            }
+            foreach (var c in settings.Custom)
+            {
+                if (c.SensorId == "Mix/Water") v[c.Key] = (float)(31 + (cpuT - 45) * 0.12 + (gpuT - 40) * 0.15);
+                else if (c.SensorId == "/lpc/it8688e/fan/4") v[c.Key] = (float)(2400 + gpuL * 6);
+                else if (c.SensorId == "/nvme/0/temperature/0") v[c.Key] = (float)(38 + cpuL * 0.08);
             }
             sampler.Feed(v, fans, dimms, names, gpuName, starting ? null : "Quiet");
         }

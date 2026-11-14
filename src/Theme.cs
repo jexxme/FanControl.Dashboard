@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -29,6 +30,50 @@ namespace FanControl.Dashboard
         public static bool IsLight { get; private set; }
 
         static Palette() { SetMode(false); }
+
+        /// <summary>Colours the user can pick for lines and cards: name, dark-theme hex, light-theme hex.</summary>
+        public static readonly string[][] ChoiceTable =
+        {
+            new[] { "blue", "#3987E5", "#1F6FD1" }, new[] { "orange", "#D95926", "#C24E1C" }, new[] { "green", "#199E70", "#13855D" },
+            new[] { "amber", "#C98500", "#9A6600" }, new[] { "violet", "#9085E9", "#6A5BD6" }, new[] { "pink", "#D9529B", "#B83A7E" },
+            new[] { "teal", "#1BA5B8", "#0E7F8F" }, new[] { "red", "#E05252", "#C23B3B" }, new[] { "lime", "#7FB536", "#5A8A1C" },
+            new[] { "slate", "#8A97A8", "#5E6B7C" },
+        };
+        public static readonly string[] Choices = ChoiceTable.Select(c => c[0]).ToArray();
+        static readonly string[] CustomCycle = { "pink", "teal", "lime", "red", "slate", "amber", "green", "violet", "blue", "orange" };
+
+        public static bool IsChoice(string name) { return name != null && Array.IndexOf(Choices, name) >= 0; }
+
+        public static Brush Named(string name)
+        {
+            var row = ChoiceTable.FirstOrDefault(c => c[0] == name) ?? ChoiceTable[0];
+            return Freeze(IsLight ? row[2] : row[1]);
+        }
+
+        /// <summary>Colour name a series gets unless the user picked one.</summary>
+        public static string DefaultColor(string key, int customIndex)
+        {
+            switch (key)
+            {
+                case "cpu.temp": case "cpu.load": return "blue";
+                case "gpu.temp": case "gpu.load": return "orange";
+                case "gpu.hot": return "green";
+                case "gpu.vram": return "amber";
+                case "ram.temp": case "ram.load": return "violet";
+                default: return CustomCycle[Math.Max(0, customIndex) % CustomCycle.Length];
+            }
+        }
+
+        /// <summary>The colour of a series (built-in key or custom:&lt;id&gt;) under the current settings.</summary>
+        public static Brush ForSeries(Settings s, string key)
+        {
+            string name;
+            if (s != null && s.Colors.TryGetValue(key, out name) && IsChoice(name)) return Named(name);
+            var custom = s == null ? null : s.FindCustom(key);
+            if (custom != null && key.StartsWith("custom:", StringComparison.Ordinal))
+                return Named(IsChoice(custom.Color) ? custom.Color : DefaultColor(key, s.Custom.IndexOf(custom)));
+            return Named(DefaultColor(key, 0));
+        }
 
         /// <summary>Series and status colours for a dark or a light card surface (checked for contrast on both).</summary>
         public static void SetMode(bool light)

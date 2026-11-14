@@ -25,6 +25,15 @@ namespace FanControl.Dashboard
         /// <summary>Number of samples recorded so far (at most <see cref="Capacity"/>).</summary>
         public int Count { get { return _count; } }
 
+        public bool Has(string key) { return key != null && _series.ContainsKey(key); }
+
+        /// <summary>Adds a series (e.g. a sensor the user just added); its past reads as NaN.</summary>
+        public void Ensure(string key)
+        {
+            if (key == null || _series.ContainsKey(key)) return;
+            _series[key] = Fill(new float[_capacity]);
+        }
+
         /// <summary>Appends one sample for every series; series missing from <paramref name="values"/> get NaN.</summary>
         public void Push(IDictionary<string, float> values)
         {

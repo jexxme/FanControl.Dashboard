@@ -10,7 +10,14 @@ First public version.
 ### Added
 - Dashboard section at the top of Fan Control's Home page: CPU, GPU, RAM and fan cards; temperature and load history
   charts (side by side, stacked or one chart; 2/5/10/30 minutes) with limit lines, a synced hover crosshair and a clickable legend.
-- Settings panel (gear icon), saved to `%AppData%\FanControl.Dashboard\settings.json`.
+- Settings panel (gear icon) with six tabs, saved to `%AppData%\FanControl.Dashboard\settings.json`:
+  - **Cards**: show, hide and reorder cards; per-card details (CPU power, GPU hotspot/VRAM, RAM use and modules).
+  - **Sensors**: choose the sensor behind every built-in value instead of the automatic pick (any Fan Control sensor,
+    including mix and custom sensors).
+  - **Custom**: add up to 16 sensors of any type as their own cards and/or chart lines, with name, limit and colour.
+  - **Fans**: show, hide, reorder and rename fans (in the dashboard only).
+  - **Look**: °C or °F, compact density, smoothing of chart lines, line colours.
+- History of one hour (2 / 5 / 10 / 30 / 60 minutes); charts draw at most about two points per pixel.
 - Plugin sensors `CPU load %`, `GPU load %`, `RAM used %`.
 - Works in both Fan Control V285 builds, .NET Framework 4.8 and .NET 10, with the same DLL. JSON is now read and written
   by the plugin itself instead of `System.Web.Extensions` (which .NET 10 does not have); the settings file format is unchanged.

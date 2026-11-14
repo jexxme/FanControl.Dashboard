@@ -151,6 +151,12 @@ namespace FanControl.Dashboard
             _changed(idx);
         }
 
+        /// <summary>Replaces the option texts (e.g. shorter ones on narrow widths).</summary>
+        public void SetLabels(string[] labels)
+        {
+            for (int i = 0; i < _items.Count && i < labels.Length; i++) ((TextBlock)_items[i].Child).Text = labels[i];
+        }
+
         public void Select(int idx)
         {
             _selected = idx;

@@ -93,12 +93,22 @@ public sealed class JsonTests
     [Fact]
     public void Settings_written_by_the_old_serializer_load_unchanged()
     {
-        var old = new Settings { Layout = ChartLayout.Single, CpuLimit = 89, RamWarning = 60, RangeMinutes = 30, ShowFans = false };
-        old.HiddenSeries.Add("1:ram.load");
-        var text = old.ToJson();
-        var viaOld = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<Settings>(text);
-        var viaNew = Settings.FromJson(text);
-        Assert.Equal(viaOld.ToJson(), viaNew.ToJson());
+        // exactly what the first versions wrote (JavaScriptSerializer, original fields only)
+        var oldFile = new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(new Dictionary<string, object>
+        {
+            { "Collapsed", false }, { "ShowCpu", true }, { "ShowGpu", true }, { "ShowRam", true }, { "ShowFans", false },
+            { "ShowCharts", true }, { "Layout", 2 }, { "SingleMode", 1 }, { "RangeMinutes", 30 }, { "ChartHeight", 300 },
+            { "ShowLimits", true }, { "CpuLimit", 89.0 }, { "RamWarning", 60.0 }, { "HiddenSeries", new List<string> { "1:ram.load" } },
+        });
+        var s = Settings.FromJson(oldFile);
+        s.Sanitize();
+        Assert.False(s.ShowFans); Assert.Equal(ChartLayout.Single, s.Layout); Assert.Equal(1, s.SingleMode);
+        Assert.Equal(30, s.RangeMinutes); Assert.Equal(300, s.ChartHeight); Assert.Equal(89, s.CpuLimit); Assert.Equal(60, s.RamWarning);
+        Assert.True(s.IsHidden(1, "ram.load"));
+        Assert.True(s.RamWarningAuto); // new options get their defaults
+        Assert.Equal(new[] { "cpu", "gpu", "ram", "fans" }, s.CardOrder.ToArray());
+        // and the start of the new file is still the old format, byte for byte
+        Assert.StartsWith(oldFile.Substring(0, oldFile.IndexOf("\"HiddenSeries\"", StringComparison.Ordinal)), s.ToJson().Replace(",\"RamWarningAuto\":true", ""));
     }
 #endif
 }

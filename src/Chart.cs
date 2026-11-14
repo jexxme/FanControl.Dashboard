@@ -9,27 +9,30 @@ using System.Windows.Media;
 
 namespace FanControl.Dashboard
 {
+    /// <summary>One line in a chart (built-in or a sensor the user added).</summary>
+    sealed class SeriesDef
+    {
+        public string Name, Short, Key, Unit; public Brush Brush;
+        /// <summary>Limit line for this series in °C (NaN = none) and its label, e.g. "CPU limit".</summary>
+        public Func<double> Limit = () => double.NaN;
+        public string LimitLabel;
+        public SeriesDef(string name, string key, Brush brush, string unit, string shortName = null) { Name = name; Key = key; Brush = brush; Unit = unit; Short = shortName ?? name; }
+    }
+
     /// <summary>Line chart of the sampler history with grid, limit lines, direct labels and a (synced) hover crosshair.</summary>
     sealed class Chart : FrameworkElement
     {
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
-        // built from the palette when the chart is created, so a theme switch (which recreates the view) recolours them
-        readonly SeriesDef[] _temp = {
-            new SeriesDef("CPU", "cpu.temp", Palette.Cpu, "°C"), new SeriesDef("GPU", "gpu.temp", Palette.Gpu, "°C"),
-            new SeriesDef("GPU hotspot", "gpu.hot", Palette.Hotspot, "°C", "Hotspot"), new SeriesDef("VRAM", "gpu.vram", Palette.Vram, "°C"),
-            new SeriesDef("RAM", "ram.temp", Palette.Ram, "°C") };
-        readonly SeriesDef[] _load = {
-            new SeriesDef("CPU", "cpu.load", Palette.Cpu, "%"), new SeriesDef("GPU", "gpu.load", Palette.Gpu, "%"),
-            new SeriesDef("RAM", "ram.load", Palette.Ram, "%") };
         static Pen GridPen { get { return Frozen(new Pen(Palette.Grid, 1)); } }
         static Pen CrossPen { get { return Frozen(new Pen(Palette.TextMuted, 1)); } }
         static Pen DashPen(Brush b) { return Frozen(new Pen(b, 1) { DashStyle = new DashStyle(new double[] { 4, 3 }, 0) }); }
 
-        const double Left = 36, Top = 10, Bottom = 22, Gutter = 96;
+        const double Left = 36, Top = 10, Bottom = 22, Gutter = 104;
         readonly Settings _settings;
         readonly Sampler _sampler;
         Point? _mouse;
         double? _sync;
+        SeriesDef[] _temp = new SeriesDef[0], _load = new SeriesDef[0];
 
         public int Mode { get; set; }
         public int Points { get; set; }
@@ -43,6 +46,8 @@ namespace FanControl.Dashboard
         public Chart(Settings settings, Sampler sampler) { _settings = settings; _sampler = sampler; Points = 600; ClipToBounds = true; }
 
         internal static Sampler Source; // set by the view; one sampler per process
+
+        public void SetSeries(SeriesDef[] temperature, SeriesDef[] load) { _temp = temperature; _load = load; InvalidateVisual(); }
 
         static Pen Frozen(Pen p) { p.Freeze(); return p; }
 
@@ -89,6 +94,25 @@ namespace FanControl.Dashboard
             dc.DrawText(t, new Point(back.Left + 10, back.Top + 5));
         }
 
+        /// <summary>The y-axis range in display units: temperatures keep 30/20 to at least 100 °C (212 °F), load is 0..100.</summary>
+        static void Axis(int mode, double min, double max, double plotHeight, out double lo, out double hi, out double step)
+        {
+            if (mode != 0) { lo = 0; hi = Math.Max(100, Math.Ceiling(max / 25) * 25); step = plotHeight < 150 ? 50 : 25; return; }
+            if (!Units.Fahrenheit)
+            {
+                lo = min < 30 ? Math.Min(20, Math.Floor((min - 2) / 10) * 10) : 30;
+                hi = Math.Max(100, Math.Ceiling((max + 2) / 10) * 10);
+                step = hi - lo > 80 ? 20 : 10;
+            }
+            else
+            {
+                lo = min < 86 ? Math.Min(60, Math.Floor((min - 4) / 20) * 20) : 80;
+                hi = Math.Max(220, Math.Ceiling((max + 4) / 20) * 20);
+                step = hi - lo > 160 ? 40 : 20;
+            }
+            if (plotHeight < 150) step *= 2;
+        }
+
         protected override void OnRender(DrawingContext dc)
         {
             var sampler = _sampler ?? Source;
@@ -96,21 +120,25 @@ namespace FanControl.Dashboard
             dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, W, H)); // hit-test surface
             if (sampler == null || W < 60 || H < 40) return;
             var plot = Plot;
+            bool temps = Mode == 0;
+            Func<float, float> show = v => temps ? Units.ToDisplay(v) : v;
 
             var series = Visible;
-            var data = series.Select(s => sampler.History(s.Key, Points)).ToArray();
-            bool ramShown = Mode == 0 && series.Any(s => s.Key == "ram.temp");
-            bool cpuShown = Mode == 0 && series.Any(s => s.Key == "cpu.temp");
+            int window = Math.Max(1, _settings.Smoothing);
+            var data = series.Select(s => ChartMath.Smooth(sampler.History(s.Key, Points), window).Select(show).ToArray()).ToArray();
+            var limits = new List<Tuple<SeriesDef, double>>();
+            if (_settings.ShowLimits)
+                for (int s = 0; s < series.Length; s++)
+                {
+                    double l = series[s].Limit();
+                    if (!double.IsNaN(l) && data[s].Any(v => !float.IsNaN(v))) limits.Add(Tuple.Create(series[s], temps ? Units.ToDisplay(l) : l));
+                }
+
+            var all = data.SelectMany(a => a).Where(v => !float.IsNaN(v)).ToList();
+            double max = all.DefaultIfEmpty(temps ? 0f : 0f).Max(), min = all.DefaultIfEmpty(temps ? (float)Units.ToDisplay(40.0) : 0f).Min();
+            foreach (var l in limits) max = Math.Max(max, l.Item2);
             double lo, hi, step;
-            if (Mode == 0)
-            {
-                var all = data.SelectMany(a => a).Where(v => !float.IsNaN(v)).ToList();
-                double max = all.DefaultIfEmpty(0).Max(), min = all.DefaultIfEmpty(40).Min();
-                if (_settings.ShowLimits && cpuShown) max = Math.Max(max, _settings.CpuLimit);
-                lo = min < 30 ? 20 : 30; hi = Math.Max(100, Math.Ceiling((max + 2) / 10) * 10); step = hi - lo > 80 ? 20 : 10;
-                if (plot.Height < 150) step *= 2;
-            }
-            else { lo = 0; hi = 100; step = plot.Height < 150 ? 50 : 25; }
+            Axis(Mode, min, max, plot.Height, out lo, out hi, out step);
             Func<double, double> Y = v => plot.Bottom - (Math.Max(lo, Math.Min(hi, v)) - lo) / (hi - lo) * plot.Height;
             Func<int, double> X = i => plot.Left + (Points <= 1 ? 0 : i * plot.Width / (Points - 1));
 
@@ -133,23 +161,16 @@ namespace FanControl.Dashboard
             }
             // limit lines (their labels are drawn after the data so lines never cover them)
             var limitLabels = new List<Tuple<double, string>>();
-            if (_settings.ShowLimits && cpuShown)
+            foreach (var l in limits)
             {
-                double y = Math.Round(Y(_settings.CpuLimit)) + 0.5;
-                dc.DrawLine(DashPen(Palette.Limit), new Point(plot.Left, y), new Point(plot.Right, y));
-                limitLabels.Add(Tuple.Create(y, "CPU limit " + _settings.CpuLimit.ToString("0", Inv) + " °C"));
-            }
-            double ramWarning = _settings.EffectiveRamWarning(sampler.Get("ram.limit"));
-            if (_settings.ShowLimits && ramShown && data[Array.FindIndex(series, x => x.Key == "ram.temp")].Any(v => !float.IsNaN(v)))
-            {
-                double y = Math.Round(Y(ramWarning)) + 0.5;
-                dc.DrawLine(DashPen(Palette.Ram), new Point(plot.Left, y), new Point(plot.Right, y));
-                limitLabels.Add(Tuple.Create(y, "RAM warning " + ramWarning.ToString("0", Inv) + " °C"));
+                double y = Math.Round(Y(l.Item2)) + 0.5;
+                dc.DrawLine(DashPen(l.Item1.Key == "cpu.temp" ? Palette.Limit : l.Item1.Brush), new Point(plot.Left, y), new Point(plot.Right, y));
+                limitLabels.Add(Tuple.Create(y, (l.Item1.LimitLabel ?? l.Item1.Name + " limit") + " " + l.Item2.ToString("0", Inv) + (temps ? " " + Units.Temp : " %")));
             }
 
             if (series.Length == 0)
             {
-                Centered(dc, plot, "All lines are hidden. Click a legend entry to show it again.");
+                Centered(dc, plot, AllSeries.Length == 0 ? "No lines in this chart." : "All lines are hidden. Click a legend entry to show it again.");
                 return;
             }
             if (data.All(a => a.All(float.IsNaN)))
@@ -158,7 +179,8 @@ namespace FanControl.Dashboard
                 return;
             }
 
-            // lines
+            // lines: about two points per pixel, keeping each pixel's minimum and maximum
+            int buckets = Math.Max(10, (int)plot.Width);
             for (int s = 0; s < series.Length; s++)
             {
                 var pen = new Pen(series[s].Brush, 2) { LineJoin = PenLineJoin.Round, StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
@@ -167,11 +189,10 @@ namespace FanControl.Dashboard
                 using (var ctx = geo.Open())
                 {
                     bool open = false;
-                    for (int i = 0; i < data[s].Length; i++)
+                    foreach (int i in ChartMath.Decimate(data[s], buckets))
                     {
-                        float v = data[s][i];
-                        if (float.IsNaN(v)) { open = false; continue; }
-                        var p = new Point(X(i), Y(v));
+                        if (i < 0) { open = false; continue; }
+                        var p = new Point(X(i), Y(data[s][i]));
                         if (!open) { ctx.BeginFigure(p, false, false); open = true; } else ctx.LineTo(p, true, true);
                     }
                 }
@@ -212,7 +233,8 @@ namespace FanControl.Dashboard
             for (int k = 0; k < ends.Count; k++)
             {
                 var e = ends[k];
-                var t = Text(e.Item3.ToString("0", Inv) + (e.Item2.Unit == "%" ? " %" : "°") + "  " + e.Item2.Short, Palette.Text, 11);
+                var t = Text(e.Item3.ToString("0", Inv) + (temps ? "°" : " %") + "  " + e.Item2.Short, Palette.Text, 11);
+                t.MaxTextWidth = Gutter - 20; t.MaxLineCount = 1; t.Trimming = TextTrimming.CharacterEllipsis;
                 // a short leader from the line end to its label, bent when the label had to move to avoid another one
                 var leader = Frozen(new Pen(e.Item2.Brush, 1.5));
                 dc.DrawLine(leader, new Point(plot.Right + 5, e.Item1), new Point(plot.Right + 9, ys[k]));
@@ -238,8 +260,10 @@ namespace FanControl.Dashboard
                 }
                 if (!own) return;
                 int ago = Points - 1 - i;
-                var head = Text(ago == 0 ? "now" : ago < 60 ? ago + " s ago" : (ago / 60) + " min " + (ago % 60).ToString("00") + " s ago", Palette.TextDim, 11);
-                var lines = rows.Select(r => Text(r.Item1.Name + "   " + (float.IsNaN(r.Item2) ? "–" : r.Item2.ToString("0.0", Inv) + " " + r.Item1.Unit), Palette.Text, 11.5)).ToList();
+                string when = ago == 0 ? "now" : ago < 60 ? ago + " s ago" : (ago / 60) + " min " + (ago % 60).ToString("00") + " s ago";
+                var head = Text(when + (_settings.Smoothing > 0 ? " · smoothed" : ""), Palette.TextDim, 11);
+                string unit = temps ? Units.Temp : "%";
+                var lines = rows.Select(r => Text(r.Item1.Name + "   " + (float.IsNaN(r.Item2) ? "–" : r.Item2.ToString("0.0", Inv) + " " + unit), Palette.Text, 11.5)).ToList();
                 double bw = Math.Max(head.Width, lines.Max(l => l.Width) + 14) + 20, bh = 12 + head.Height + lines.Sum(l => l.Height + 3) + 6;
                 double bx = x + 12; if (bx + bw > plot.Right) bx = Math.Max(2, x - 12 - bw); // keep clear of the end labels
                 double by = Math.Max(plot.Top, Math.Min(_mouse.Value.Y - bh / 2, plot.Bottom - bh));

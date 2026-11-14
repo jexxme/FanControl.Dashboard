@@ -16,10 +16,10 @@ namespace FanControl.Dashboard
         public string Curve;
     }
 
-    /// <summary>Latest values plus a 30-minute history, sampled once per second on a background thread.</summary>
+    /// <summary>Latest values plus a 60-minute history, sampled once per second on a background thread.</summary>
     public sealed class Sampler
     {
-        public const int Capacity = 1800; // 30 min at 1 Hz
+        public const int Capacity = 3600; // 60 min at 1 Hz
 
         public static readonly string[] HistoryKeys = { "cpu.temp", "gpu.temp", "gpu.hot", "gpu.vram", "cpu.load", "gpu.load", "ram.load", "ram.temp" };
 
@@ -46,11 +46,47 @@ namespace FanControl.Dashboard
         /// <summary>When the last complete sample was taken (MinValue: never).</summary>
         public DateTime LastSampleUtc { get; private set; }
         Dictionary<string, string> _names = new Dictionary<string, string>();
+        Dictionary<string, string> _overrides = new Dictionary<string, string>();   // built-in key -> sensor id chosen by the user
+        Dictionary<string, string> _extras = new Dictionary<string, string>();      // custom:<id> -> sensor id
+        List<SensorInfo> _catalog = new List<SensorInfo>();
+        volatile bool _rediscover;
+
+        /// <summary>Every sensor Fan Control reported at the last discovery (for the sensor pickers).</summary>
+        internal List<SensorInfo> Catalog { get { lock (_lock) return new List<SensorInfo>(_catalog); } }
+
+        /// <summary>Re-reads Fan Control's sensor list on the next sample (e.g. when the settings open).</summary>
+        public void RequestDiscovery() { _rediscover = true; }
+
+        /// <summary>
+        /// Sensors chosen by the user: <paramref name="overrides"/> replace the automatic pick for built-in keys
+        /// ("cpu.temp", "gpu.load", ...), <paramref name="extras"/> are recorded under their own keys ("custom:&lt;id&gt;").
+        /// </summary>
+        public void Configure(IDictionary<string, string> overrides, IDictionary<string, string> extras)
+        {
+            lock (_lock)
+            {
+                _overrides = overrides == null ? new Dictionary<string, string>() : new Dictionary<string, string>(overrides);
+                _extras = extras == null ? new Dictionary<string, string>() : new Dictionary<string, string>(extras);
+                foreach (var k in _extras.Keys) _history.Ensure(k);
+            }
+        }
+
+        /// <summary>The sensor the automatic detection picked for a key, null if none.</summary>
+        public string AutomaticSensorId(string key) { lock (_lock) { string id; return _map.Ids.TryGetValue(key, out id) ? id : null; } }
 
         /// <summary>Short name of the sensor behind a key (e.g. "Tctl/Tdie" for cpu.temp), null if none was found.</summary>
         public string SensorName(string key)
         {
-            lock (_lock) { string n; return _names.TryGetValue(key, out n) ? n : null; }
+            lock (_lock)
+            {
+                string id, n;
+                if (_overrides.TryGetValue(key, out id))
+                {
+                    var s = _catalog.FirstOrDefault(c => c.Id == id);
+                    return s == null ? null : key == "cpu.temp" ? SensorMatcher.CpuDetail(s) : s.Name;
+                }
+                return _names.TryGetValue(key, out n) ? n : null;
+            }
         }
 
         public Sampler(Action<string> log)
@@ -92,6 +128,9 @@ namespace FanControl.Dashboard
         /// Records one sample from an outside source instead of Fan Control (demo mode of the harness).
         /// Do not mix with <see cref="Start"/>.
         /// </summary>
+        /// <summary>Demo mode of the harness: the sensor list the pickers offer.</summary>
+        internal void SetCatalog(List<SensorInfo> catalog) { lock (_lock) { _catalog = new List<SensorInfo>(catalog); _map = SensorMatcher.Match(catalog); } }
+
         internal void Feed(IDictionary<string, float> latest, List<FanInfo> fans, List<string> dimmNames, Dictionary<string, string> names, string gpuName, string configName)
         {
             lock (_lock)
@@ -100,6 +139,7 @@ namespace FanControl.Dashboard
                 if (fans != null) _fans = new List<FanInfo>(fans);
                 if (dimmNames != null) DimmNames = new List<string>(dimmNames);
                 if (names != null) _names = new Dictionary<string, string>(names);
+                foreach (var k in _latest.Keys) if (k.StartsWith("custom:", StringComparison.Ordinal)) _history.Ensure(k);
                 _history.Push(_latest);
             }
             GpuName = gpuName; ConfigName = configName; Discovered = true; LastSampleUtc = DateTime.UtcNow;
@@ -129,13 +169,22 @@ namespace FanControl.Dashboard
         {
             RefreshConfig();
             SensorMap map; lock (_lock) map = _map;
-            if (!Discovered || (map.Ids.Count < SensorMatcher.MaxKeys && (DateTime.UtcNow - _lastDiscovery).TotalSeconds > 60))
+            if (!Discovered || _rediscover || (map.Ids.Count < SensorMatcher.MaxKeys && (DateTime.UtcNow - _lastDiscovery).TotalSeconds > 60))
             {
+                _rediscover = false;
                 Discover();
                 lock (_lock) map = _map;
             }
+            Dictionary<string, string> ids, extras;
+            lock (_lock)
+            {
+                ids = new Dictionary<string, string>(map.Ids);
+                foreach (var kv in _overrides) ids[kv.Key] = kv.Value;
+                extras = new Dictionary<string, string>(_extras);
+            }
 
-            var wanted = new List<string>(map.Ids.Values);
+            var wanted = new List<string>(ids.Values);
+            wanted.AddRange(extras.Values);
             wanted.AddRange(map.Dimms.Select(d => d.Id));
             wanted.AddRange(map.DimmLimits.Select(d => d.Id));
             List<FanInfo> fans; lock (_lock) fans = new List<FanInfo>(_fans);
@@ -145,14 +194,15 @@ namespace FanControl.Dashboard
             float gpuLoad = _gpu.Sample();
 
             var latest = new Dictionary<string, float>();
-            foreach (var kv in map.Ids) { float v; if (values != null && values.TryGetValue(kv.Value, out v)) latest[kv.Key] = v; }
+            foreach (var kv in ids) { float v; if (values != null && values.TryGetValue(kv.Value, out v)) latest[kv.Key] = v; }
+            foreach (var kv in extras) { float v; if (values != null && values.TryGetValue(kv.Value, out v)) latest[kv.Key] = v; }
             foreach (var f in fans)
             {
                 float v;
                 if (values != null && f.ControlId != null && values.TryGetValue(f.ControlId, out v)) latest["duty:" + f.ControlId] = v;
                 if (values != null && f.RpmId != null && values.TryGetValue(f.RpmId, out v)) latest["rpm:" + f.RpmId] = v;
             }
-            if (!float.IsNaN(gpuLoad)) latest["gpu.load"] = gpuLoad;
+            if (!float.IsNaN(gpuLoad) && !ids.ContainsKey("gpu.load")) latest["gpu.load"] = gpuLoad; // a chosen sensor wins over the counters
             if (!latest.ContainsKey("cpu.load")) { float c = CpuTimes.Sample(); if (!float.IsNaN(c)) latest["cpu.load"] = c; }
             else CpuTimes.Sample();
             if (!latest.ContainsKey("ram.load")) latest["ram.load"] = CpuTimes.Ram();
@@ -167,7 +217,7 @@ namespace FanControl.Dashboard
                 latest["ram.dimm" + d] = v;
                 if (float.IsNaN(dimmMax) || v > dimmMax) dimmMax = v;
             }
-            if (!float.IsNaN(dimmMax)) latest["ram.temp"] = dimmMax;
+            if (!float.IsNaN(dimmMax) && !ids.ContainsKey("ram.temp")) latest["ram.temp"] = dimmMax; // a chosen sensor wins over the modules
             // the lowest "high" threshold any module reports (DDR5 SPD hub, typically 55 °C)
             float limit = float.NaN;
             foreach (var s in map.DimmLimits)
@@ -195,6 +245,7 @@ namespace FanControl.Dashboard
             lock (_lock)
             {
                 _map = map;
+                _catalog = all.Where(s => !s.Id.StartsWith("Dashboard/", StringComparison.Ordinal)).ToList();
                 _names = new Dictionary<string, string>(map.Names);
                 DimmNames = map.Dimms.Select(s => s.Name).ToList();
             }

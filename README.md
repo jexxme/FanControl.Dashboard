@@ -1,7 +1,7 @@
 # Fan Control Dashboard
 
 An **unofficial** plugin for [Fan Control](https://getfancontrol.com) that adds a live dashboard to the top of
-Fan Control's Home page: temperatures, load and fan speeds at a glance, plus history charts of the last 2 to 30 minutes.
+Fan Control's Home page: temperatures, load and fan speeds at a glance, plus history charts of the last 2 minutes to 1 hour — and almost everything about it can be customized.
 
 ![Dashboard in Fan Control's dark theme, with the hover tooltip on the temperature chart](docs/dashboard-dark.png)
 
@@ -20,8 +20,10 @@ Fan Control's Home page: temperatures, load and fan speeds at a glance, plus his
   - **RAM**: hottest memory module (DDR5 modules with a temperature sensor) with the headroom to the modules' own warning
     threshold, amount in use, per-module temperatures. Without module sensors it shows the amount in use instead.
   - **Fans**: duty and speed of every enabled control in the current Fan Control profile; hover a name to see its curve.
-- **History charts** for temperature and load: side by side, stacked, or one chart with a toggle; 2 / 5 / 10 / 30 minutes;
-  limit lines; a hover crosshair that is synced between the charts; click a legend entry to hide or show a line.
+- **History charts** for temperature and load: side by side, stacked, or one chart with a toggle; 2 minutes to 1 hour;
+  limit lines; optional smoothing; a hover crosshair that is synced between the charts; click a legend entry to hide or show a line.
+- **Customizable**: choose the sensor behind every value, add your own sensors as cards or chart lines with limits and colours,
+  reorder cards and fans, rename and hide fans, °C or °F, compact density. See [Settings](#settings).
 - **Matches Fan Control's look**: cards and headers copy the style of Fan Control's own cards at runtime, in both the light
   and the dark theme, and restyle when you switch themes.
 - **Collapsible**: collapsed, the header still shows CPU, GPU and RAM temperatures in one line.
@@ -75,23 +77,29 @@ Settings are in `%AppData%\FanControl.Dashboard\settings.json`.
 
 ## Settings
 
-Open them with the gear icon in the dashboard header. Changes apply and save immediately.
+Open them with the gear icon in the dashboard header. Everything applies and saves immediately
+(`%AppData%\FanControl.Dashboard\settings.json`).
 
-![Settings panel](docs/settings.png)
+![Custom tab: own sensors as cards and chart lines](docs/settings.png)
 
-| Setting | Default | |
-|---|---|---|
-| Cards | all on | Which cards to show. |
-| History | on | Show the history charts. |
-| Layout | Side by side | *Side by side* (one column below about 900 px), *Stacked*, or *One chart* with a Temperature/Load toggle. |
-| Chart height | Medium | 160 / 220 / 300 px. |
-| History length | 10 min | The 2 / 5 / 10 / 30 min toggle in the header. History is kept for 30 minutes in memory. |
-| Show limit lines | on | Dashed lines for the CPU limit and the RAM warning in the temperature chart. |
-| CPU limit | 95 °C | Set it to your CPU's maximum temperature (Tjmax): about 95 °C for AMD Ryzen 7000/9000, 89 °C for Ryzen X3D models, 100 °C for most Intel desktop CPUs. Used for the headroom text and the limit line. |
-| RAM warning | 55 °C, *use the modules' own limit* on | DDR5 modules report a "high" threshold themselves (usually 55 °C); with the option on it is used when available. Hidden when your modules report no temperature. |
-| Hidden lines | none | Click a legend entry to hide or show a line; remembered per chart type. |
+| Tab | What you can change |
+|---|---|
+| **General** | History charts on/off; layout (*side by side*, *stacked*, *one chart* with a Temperature/Load toggle); chart height; limit lines; **CPU limit** (default 95 °C — set it to your CPU's Tjmax: about 95 °C for Ryzen 7000/9000, 89 °C for Ryzen X3D, 100 °C for most Intel desktop CPUs); **RAM warning** (default: the modules' own reported limit, usually 55 °C). |
+| **Cards** | Which cards are shown and **their order** (arrows); details per card: CPU package power, GPU hotspot/VRAM, RAM amount in use and per-module temperatures. |
+| **Sensors** | **Which sensor** feeds each built-in value — CPU temperature, load and power, GPU temperature, hotspot, VRAM and load, RAM temperature and use. *Automatic* shows what was detected; pick any other sensor Fan Control knows, including its mix and custom sensors. |
+| **Custom** | **Add your own sensors** (up to 16) — a water or case temperature, an SSD, a pump speed, power, voltage, a Fan Control mix sensor… Each gets a name, a card and/or a line in the temperature (°C sensors) or load (% sensors) chart, an optional **limit** (headroom in the card, dashed line in the chart) and a colour. |
+| **Fans** | Which fans the Fans card shows, **their order** and **names** (only in the dashboard; Fan Control keeps its own names). |
+| **Look** | **°C or °F**; *comfortable* or *compact* density; **smoothing** of chart lines (3 / 10 / 30 s moving average; cards always show the latest value); **line colours** of the built-in series. |
 
-**Reset to defaults** restores everything. To start over completely, delete `%AppData%\FanControl.Dashboard\settings.json`.
+The header toggles the history length: 2, 5, 10, 30 minutes or **1 hour** (history is kept in memory for one hour).
+Click a legend entry to hide or show a line.
+
+| Cards tab | Your own sensors in the dashboard |
+|---|---|
+| ![Cards tab: order, visibility and details](docs/settings-cards.png) | ![Dashboard with custom water and pump cards, a reordered and renamed fan list and the one-hour range](docs/dashboard-custom.png) |
+
+**Reset to defaults** restores every option but keeps what you created: your custom sensors and fan names.
+To start over completely, delete `%AppData%\FanControl.Dashboard\settings.json`.
 
 ## How it works
 
@@ -106,7 +114,8 @@ Open them with the gear icon in the dashboard header. Changes apply and save imm
   `log.txt` (prefix `[Dashboard]`); sensors and fan control keep working. All UI code is wrapped so that a failure in the
   dashboard cannot take Fan Control down.
 - **Resources**: the view only redraws while someone can see it (on screen, window not minimized, keyboard or mouse input
-  in the last 2 minutes). History keeps recording in the background (8 series × 1800 samples).
+  in the last 2 minutes). History keeps recording in the background (one hour per series, 14 KB each). Charts draw at most
+  about two points per pixel (keeping each pixel's minimum and maximum), so an hour of data costs no more to draw than two minutes.
 
 ## Known issues
 
@@ -121,7 +130,7 @@ Open them with the gear icon in the dashboard header. Changes apply and save imm
 - **Load sensors show °C.** Fan Control lists plugin sensors as temperatures, so `CPU load %` shows as e.g. `37 °C`
   in Fan Control's sensor lists; tray icons show only the number.
 - **History starts empty** after every Fan Control restart (it is kept in memory only).
-- **English only**, and temperatures are always shown in °C.
+- **English only.**
 - **How the .NET 10 build is verified**: the plugin is one .NET Framework 4.8 DLL, which .NET 10 can load. CI runs every test
   and renders the UI under both runtimes, each against the assemblies of the matching official Fan Control V285 build
   (including a test that JIT-compiles every method of the plugin and one that calls Fan Control's IPC client). It has
