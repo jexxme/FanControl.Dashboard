@@ -73,4 +73,56 @@ public sealed class HistoryBufferTests
         Assert.True(float.IsNaN(s.Get("gpu.temp")));
         Assert.True(s.Discovered);
     }
+
+    [Fact]
+    public void Saved_history_comes_back_after_a_restart_with_a_gap()
+    {
+        var h = new HistoryBuffer(new[] { "a" }, 10);
+        h.Ensure("fc:/x"); // a sensor added at runtime
+        h.Push(A(1)); h.Push(A(2)); h.Push(new Dictionary<string, float> { { "a", 3 }, { "fc:/x", 7 } });
+        var saved = new System.DateTime(2026, 11, 14, 12, 0, 0, System.DateTimeKind.Utc);
+        var ms = new System.IO.MemoryStream();
+        h.Save(ms, saved);
+
+        var r = new HistoryBuffer(new[] { "a" }, 10);
+        ms.Position = 0;
+        Assert.True(r.Load(ms, saved.AddSeconds(2)));      // two seconds without the dashboard
+        var a = r.Read("a", 5);
+        Assert.Equal(new[] { 1f, 2f, 3f }, a.Take(3));
+        Assert.True(float.IsNaN(a[3]) && float.IsNaN(a[4]));
+        Assert.Equal(7f, r.Read("fc:/x", 5)[2]);             // series that were added at runtime come back too
+    }
+
+    [Fact]
+    public void Old_or_damaged_history_is_ignored()
+    {
+        var h = new HistoryBuffer(new[] { "a" }, 10);
+        h.Push(A(1));
+        var saved = new System.DateTime(2026, 11, 14, 12, 0, 0, System.DateTimeKind.Utc);
+        var ms = new System.IO.MemoryStream();
+        h.Save(ms, saved);
+        var bytes = ms.ToArray();
+
+        var r = new HistoryBuffer(new[] { "a" }, 10);
+        Assert.False(r.Load(new System.IO.MemoryStream(bytes), saved.AddSeconds(10)));   // older than the buffer
+        Assert.False(r.Load(new System.IO.MemoryStream(bytes, 0, bytes.Length - 2), saved.AddSeconds(1))); // cut off
+        Assert.False(r.Load(new System.IO.MemoryStream(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }), saved));    // not ours
+        Assert.Equal(0, r.Count);
+    }
+
+    [Fact]
+    public void Sampler_saves_and_restores_its_history_file()
+    {
+        string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "fcdash-history-" + System.Guid.NewGuid().ToString("N") + ".bin");
+        try
+        {
+            var s = new Sampler(null) { HistoryPath = path };
+            s.Feed(new Dictionary<string, float> { { "cpu.temp", 50 } }, null, null, null, null, null);
+            s.SaveHistory();
+            var t = new Sampler(null) { HistoryPath = path };
+            t.LoadHistory();
+            Assert.Contains(50f, t.History("cpu.temp", 5));
+        }
+        finally { try { System.IO.File.Delete(path); } catch { } }
+    }
 }

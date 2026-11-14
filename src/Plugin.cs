@@ -30,7 +30,7 @@ namespace FanControl.Dashboard
         {
             try
             {
-                _sampler = new Sampler(Log);
+                _sampler = new Sampler(Log) { HistoryPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Settings.DefaultPath), "history.bin") };
                 _sampler.Start();
                 _injector = new Injector(_sampler, Settings.Load(Settings.DefaultPath, Log), Log);
                 _injector.Start();

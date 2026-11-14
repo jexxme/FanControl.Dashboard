@@ -30,6 +30,7 @@ using FanControl.Dashboard;
 //     --edit                  customize mode
 //     --editor <what>         with --edit: open an editor: card (add a card), display, or a card / chart id (cpu, gpu, ram, fans, temp, load)
 //     --hide <ids>            comma-separated card or chart ids to hide
+//     --drag <id:x,y>         freeze a drag of card/chart <id> with the pointer at x,y in its panel
 //     --custom                demo mode: example cards and a chart for sensors a user added (water, pump, SSD)
 //     --reorder               demo mode: a changed card and fan order, a renamed and a hidden fan
 //     --fahrenheit, --compact, --stacked, --smooth <seconds>
@@ -129,12 +130,20 @@ static class Harness
             }
             var view = new DashboardView(sampler, settings) { Width = width };
             host.Children.Add(view);
+            Action capture = null;
             var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(Math.Max(0.3, seconds)) };
             timer.Tick += (o, ev) =>
             {
                 timer.Stop();
-                view.Debug(range, hover, editing, editor);
+                view.Debug(range, hover, editing, editor, Opt(a, "--drag", null));
                 win.UpdateLayout();
+                // customize mode and drags animate (fades, cards gliding): capture once they have settled
+                var settle = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(editing || a.Contains("--drag") ? 700 : 1) };
+                settle.Tick += (o2, e2) => { settle.Stop(); capture(); };
+                settle.Start();
+            };
+            capture = () =>
+            {
                 Dispatcher.CurrentDispatcher.BeginInvoke(new Action(() =>
                 {
                     // lay out at full height: a window cannot grow past the screen, which would clip tall renders (e.g. on CI)

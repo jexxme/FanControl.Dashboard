@@ -97,7 +97,7 @@ Your layout is stored in `%AppData%\FanControl.Dashboard\settings.json`.
 
 | | |
 |---|---|
-| Fan Control | **V285**, both builds: **.NET Framework 4.8** (`FanControl_285_net_4_8`) and **.NET 10** (`FanControl_285_net_10_0`). One DLL works in both. |
+| Fan Control | **V285**, both builds: **.NET Framework 4.8** (`FanControl_285_net_4_8`) and **.NET 10** (`FanControl_285_net_10_0`). One DLL works in both; every build is tested against both in CI. |
 | Windows | Windows 10 and 11, x64 |
 | Hardware | Whatever Fan Control can read. Automatic values are tested with AMD and Intel CPUs; AMD (ADLX and LibreHardwareMonitor) and NVIDIA GPUs; DDR5 module temperatures. Any other sensor can be added by hand. |
 
@@ -116,27 +116,14 @@ Fan Control version if the dashboard does not appear.
   If an update changes that page, the dashboard simply does not appear and a line is written to Fan Control's `log.txt`
   (prefix `[Dashboard]`); sensors and fan control keep working. All dashboard code is wrapped so that a failure in it
   cannot take Fan Control down.
+- **History** keeps one hour per value (14 KB each) and survives restarts: it is saved every 5 minutes and when
+  Fan Control closes (`%AppData%\FanControl.Dashboard\history.bin`), and restored with a gap for the time Fan Control was not running.
 - **Cost**: it redraws only while someone can see it (window visible, not minimized, keyboard or mouse used in the last
-  2 minutes). History keeps one hour per value in memory (14 KB each). Charts draw at most about two points per pixel,
-  so an hour of data costs no more to draw than two minutes.
-
-## Known issues
-
-- **Out-of-memory investigation (open).** On the author's PC, Fan Control crashed twice with an `OutOfMemoryException`
-  in WPF's render thread (process commit around 58 GB) while the dashboard was installed. It could not be reproduced on
-  demand and the root cause is **not confirmed**; it is not known whether the dashboard causes it. As mitigation and to
-  collect evidence, the dashboard only draws while it is visible and you were active in the last 2 minutes. A memory
-  watchdog logs Fan Control's private memory every 30 minutes to `log.txt`. If the process grows beyond 2 GB, it stops all
-  dashboard drawing for the rest of the session and logs whether the growth continues without the dashboard.
-  If you see this crash, or `[Dashboard] memory:` lines with growing numbers in Fan Control's `log.txt`, please
-  [report it](../../issues/new?template=bug_report.yml) with those log lines.
-- **The .NET 10 build of Fan Control** is verified by CI only. Every test runs and the UI renders under .NET 10, against
-  the assemblies of the official V285 .NET 10 build, including a test that compiles every method of the plugin and one
-  that calls Fan Control's IPC client. Nobody has run it in a real .NET 10 Fan Control yet; reports are welcome.
-- **Load sensors show °C.** The plugin also offers `CPU load %`, `GPU load %` and `RAM used %` as sensors (e.g. for tray
-  icons), and Fan Control lists plugin sensors as temperatures, so they read e.g. `37 °C` in its sensor lists.
-- **History starts empty** after every Fan Control restart (it is kept in memory only).
-- **English only.**
+  2 minutes), and charts draw at most about two points per pixel, so an hour of data costs no more to draw than two minutes.
+  A safeguard stops all drawing if Fan Control's memory ever grows beyond 2 GB, and Fan Control's `log.txt` gets its memory
+  use every 30 minutes (prefix `[Dashboard] memory:`).
+- **Sensors for tray icons**: the plugin also offers `CPU load %`, `GPU load %` and `RAM used %` as Fan Control sensors.
+  Fan Control lists plugin sensors with its temperature unit, so they read e.g. `37 °C` there; tray icons show the number.
 
 ## Building
 

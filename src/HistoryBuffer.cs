@@ -27,6 +27,62 @@ namespace FanControl.Dashboard
 
         public bool Has(string key) { return key != null && _series.ContainsKey(key); }
 
+        const int FileMagic = 0x48444346; // "FCDH"
+        const int FileVersion = 1;
+
+        /// <summary>
+        /// Writes every series (oldest sample first) and the time of the newest sample, so the history survives a restart.
+        /// </summary>
+        public void Save(System.IO.Stream stream, DateTime newestUtc)
+        {
+            var w = new System.IO.BinaryWriter(stream);
+            w.Write(FileMagic); w.Write(FileVersion); w.Write(newestUtc.ToBinary()); w.Write(_count); w.Write(_series.Count);
+            foreach (var kv in _series)
+            {
+                w.Write(kv.Key);
+                foreach (var v in Read(kv.Key, _count)) w.Write(v);
+            }
+            w.Flush();
+        }
+
+        /// <summary>
+        /// Restores a saved history into this (empty) buffer: the saved samples first, then a gap of NaN for the seconds the
+        /// dashboard was not running (one sample per second). Returns false and changes nothing for unknown, damaged or too old files.
+        /// </summary>
+        public bool Load(System.IO.Stream stream, DateTime nowUtc)
+        {
+            try
+            {
+                var r = new System.IO.BinaryReader(stream);
+                if (r.ReadInt32() != FileMagic || r.ReadInt32() != FileVersion) return false;
+                var newest = DateTime.FromBinary(r.ReadInt64());
+                int count = r.ReadInt32(), series = r.ReadInt32();
+                if (count < 0 || count > _capacity || series < 0 || series > 256) return false;
+                double gap = (nowUtc - newest).TotalSeconds;
+                if (gap < 0 || gap >= _capacity) return false;
+                var data = new Dictionary<string, float[]>();
+                for (int s = 0; s < series; s++)
+                {
+                    string key = r.ReadString();
+                    var values = new float[count];
+                    for (int i = 0; i < count; i++) values[i] = r.ReadSingle();
+                    data[key] = values;
+                }
+                foreach (var key in data.Keys) Ensure(key);
+                var sample = new Dictionary<string, float>();
+                for (int i = 0; i < count; i++)
+                {
+                    sample.Clear();
+                    foreach (var kv in data) sample[kv.Key] = kv.Value[i];
+                    Push(sample);
+                }
+                for (int i = 0; i < (int)gap; i++) Push(null);
+                return true;
+            }
+            catch (System.IO.IOException) { return false; }
+            catch (ArgumentException) { return false; }
+        }
+
         /// <summary>Adds a series (e.g. a sensor the user just added); its past reads as NaN.</summary>
         public void Ensure(string key)
         {

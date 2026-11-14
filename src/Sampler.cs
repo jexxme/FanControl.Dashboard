@@ -96,9 +96,14 @@ namespace FanControl.Dashboard
             DimmNames = new List<string>();
         }
 
+        /// <summary>Where the history is kept between restarts (saved every 5 minutes and on stop); null keeps it in memory only.</summary>
+        public string HistoryPath { get; set; }
+        int _sinceSave;
+
         public void Start()
         {
             if (_thread != null) return;
+            LoadHistory();
             _stop = false;
             _thread = new Thread(Loop) { IsBackground = true, Name = "FanControl.Dashboard sampler", Priority = ThreadPriority.BelowNormal };
             _thread.Start();
@@ -110,6 +115,7 @@ namespace FanControl.Dashboard
             var t = _thread; _thread = null;
             if (t != null && !t.Join(3000)) _log("sampler did not stop in time");
             _gpu.Dispose();
+            SaveHistory();
         }
 
         public float Get(string key)
@@ -237,10 +243,44 @@ namespace FanControl.Dashboard
             {
                 _latest = latest;
                 _history.Push(latest);
+                _sinceSave++;
                 if (peek && values != null) _peek = values;
                 else if (!peek && _peek.Count > 0) _peek = new Dictionary<string, float>();
             }
             LastSampleUtc = DateTime.UtcNow;
+            if (_sinceSave >= 300) SaveHistory();
+        }
+
+        /// <summary>Writes the history to <see cref="HistoryPath"/> (a temp file swapped in, so a crash never leaves half a file).</summary>
+        internal void SaveHistory()
+        {
+            if (string.IsNullOrEmpty(HistoryPath)) return;
+            try
+            {
+                byte[] bytes;
+                using (var ms = new MemoryStream())
+                {
+                    lock (_lock) { _history.Save(ms, LastSampleUtc == DateTime.MinValue ? DateTime.UtcNow : LastSampleUtc); _sinceSave = 0; }
+                    bytes = ms.ToArray();
+                }
+                Directory.CreateDirectory(Path.GetDirectoryName(HistoryPath));
+                string tmp = HistoryPath + ".tmp";
+                File.WriteAllBytes(tmp, bytes);
+                if (File.Exists(HistoryPath)) File.Replace(tmp, HistoryPath, null); else File.Move(tmp, HistoryPath);
+            }
+            catch (Exception ex) { _log("history not saved: " + ex.Message); }
+        }
+
+        /// <summary>Restores the history saved by the last run, if it is less than an hour old.</summary>
+        internal void LoadHistory()
+        {
+            if (string.IsNullOrEmpty(HistoryPath) || !File.Exists(HistoryPath)) return;
+            try
+            {
+                using (var fs = File.OpenRead(HistoryPath))
+                    lock (_lock) if (_history.Count == 0 && _history.Load(fs, DateTime.UtcNow)) _log("history restored");
+            }
+            catch (Exception ex) { _log("history not restored: " + ex.Message); }
         }
 
         void Discover()

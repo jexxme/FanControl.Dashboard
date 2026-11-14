@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
@@ -207,40 +208,109 @@ namespace FanControl.Dashboard
         public static double ColumnWidth(double width, double gap, int cols) { return Math.Max(0, (width - gap * (cols - 1)) / cols); }
     }
 
-    /// <summary>Equal-width columns: as many as fit at MinColumnWidth, rows as tall as their tallest item.</summary>
+    /// <summary>
+    /// Equal-width columns: as many as fit at MinColumnWidth, rows as tall as their tallest item.
+    /// While a card is dragged, <see cref="Sequence"/> gives the order (so the dragged element stays in the visual tree and
+    /// keeps the mouse), the other cards glide to their new places, and a placeholder marks where the dragged one will land.
+    /// </summary>
     sealed class ColumnsPanel : Panel
     {
         public double Gap { get; set; }
         public double MinColumnWidth { get; set; }
         public bool ForceSingleColumn { get; set; }
+        /// <summary>Order to lay the children out in (null: the Children order).</summary>
+        public List<UIElement> Sequence { get { return _sequence; } set { _sequence = value; InvalidateMeasure(); } }
+        /// <summary>The element being dragged: it is not animated by the panel, and its slot shows a placeholder.</summary>
+        public UIElement Dragged { get { return _dragged; } set { _dragged = value; InvalidateVisual(); } }
+        /// <summary>Slide children to new positions (only while customizing; normal updates never animate).</summary>
+        public bool Animate { get; set; }
 
-        int Columns(double w) { return ColumnMath.Columns(InternalChildren.Count, w, Gap, MinColumnWidth, ForceSingleColumn); }
+        List<UIElement> _sequence;
+        UIElement _dragged;
+        readonly Dictionary<UIElement, Rect> _slots = new Dictionary<UIElement, Rect>();
+
+        public ColumnsPanel() { Background = Brushes.Transparent; }
+
+        IList<UIElement> Items
+        {
+            get
+            {
+                var kids = InternalChildren.Cast<UIElement>().ToList();
+                if (_sequence == null) return kids;
+                var ordered = _sequence.Where(kids.Contains).ToList();
+                ordered.AddRange(kids.Where(k => !ordered.Contains(k)));
+                return ordered;
+            }
+        }
+
+        /// <summary>Where a child is laid out (Rect.Empty if it is not).</summary>
+        public Rect SlotOf(UIElement e) { Rect r; return e != null && _slots.TryGetValue(e, out r) ? r : Rect.Empty; }
+
+        int Columns(int n, double w) { return ColumnMath.Columns(n, w, Gap, MinColumnWidth, ForceSingleColumn); }
 
         protected override Size MeasureOverride(Size available)
         {
+            var items = Items;
             double w = double.IsInfinity(available.Width) ? 1000 : available.Width;
-            int cols = Columns(w); double cw = ColumnMath.ColumnWidth(w, Gap, cols), total = 0, rowH = 0;
-            for (int i = 0; i < InternalChildren.Count; i++)
+            int cols = Columns(items.Count, w); double cw = ColumnMath.ColumnWidth(w, Gap, cols), total = 0, rowH = 0;
+            for (int i = 0; i < items.Count; i++)
             {
-                var c = InternalChildren[i]; c.Measure(new Size(cw, double.PositiveInfinity));
+                var c = items[i]; c.Measure(new Size(cw, double.PositiveInfinity));
                 rowH = Math.Max(rowH, c.DesiredSize.Height);
-                if (i % cols == cols - 1 || i == InternalChildren.Count - 1) { total += rowH + (total > 0 ? Gap : 0); rowH = 0; }
+                if (i % cols == cols - 1 || i == items.Count - 1) { total += rowH + (total > 0 ? Gap : 0); rowH = 0; }
             }
             return new Size(w, total);
         }
 
         protected override Size ArrangeOverride(Size final)
         {
-            int cols = Columns(final.Width); double cw = ColumnMath.ColumnWidth(final.Width, Gap, cols), y = 0;
-            for (int start = 0; start < InternalChildren.Count; start += cols)
+            var items = Items;
+            int cols = Columns(items.Count, final.Width); double cw = ColumnMath.ColumnWidth(final.Width, Gap, cols), y = 0;
+            var seen = new HashSet<UIElement>();
+            for (int start = 0; start < items.Count; start += cols)
             {
                 double rowH = 0;
-                for (int i = start; i < Math.Min(start + cols, InternalChildren.Count); i++) rowH = Math.Max(rowH, InternalChildren[i].DesiredSize.Height);
-                for (int i = start; i < Math.Min(start + cols, InternalChildren.Count); i++)
-                    InternalChildren[i].Arrange(new Rect((i - start) * (cw + Gap), y, cw, rowH));
+                for (int i = start; i < Math.Min(start + cols, items.Count); i++) rowH = Math.Max(rowH, items[i].DesiredSize.Height);
+                for (int i = start; i < Math.Min(start + cols, items.Count); i++)
+                {
+                    var c = items[i];
+                    var rect = new Rect((i - start) * (cw + Gap), y, cw, rowH);
+                    Rect old;
+                    bool had = _slots.TryGetValue(c, out old);
+                    c.Arrange(rect);
+                    _slots[c] = rect;
+                    seen.Add(c);
+                    if (Animate && had && c != _dragged && (Math.Abs(old.X - rect.X) > 0.5 || Math.Abs(old.Y - rect.Y) > 0.5))
+                        Glide(c, old.X - rect.X, old.Y - rect.Y);
+                }
                 y += rowH + Gap;
             }
+            foreach (var gone in _slots.Keys.Where(k => !seen.Contains(k)).ToList()) _slots.Remove(gone);
+            InvalidateVisual();
             return final;
+        }
+
+        /// <summary>Starts a child at its old place and lets it slide into the new one.</summary>
+        static void Glide(UIElement c, double dx, double dy)
+        {
+            var t = c.RenderTransform as TranslateTransform;
+            if (t == null || t.IsFrozen) { t = new TranslateTransform(); c.RenderTransform = t; }
+            var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+            var time = new Duration(TimeSpan.FromMilliseconds(200));
+            t.BeginAnimation(TranslateTransform.XProperty, new System.Windows.Media.Animation.DoubleAnimation(t.X + dx, 0, time) { EasingFunction = ease });
+            t.BeginAnimation(TranslateTransform.YProperty, new System.Windows.Media.Animation.DoubleAnimation(t.Y + dy, 0, time) { EasingFunction = ease });
+        }
+
+        protected override void OnRender(DrawingContext dc)
+        {
+            base.OnRender(dc);
+            var slot = SlotOf(_dragged);
+            if (slot.IsEmpty) return;
+            // the drop target: a soft accent area with a dashed border where the dragged card will land
+            var fill = Palette.Accent.Clone(); fill.Opacity = 0.08; fill.Freeze();
+            var pen = new Pen(Palette.Accent, 1.5) { DashStyle = new DashStyle(new double[] { 4, 3 }, 0) }; pen.Freeze();
+            slot.Inflate(-1, -1);
+            dc.DrawRoundedRectangle(fill, pen, slot, 7, 7);
         }
     }
 }

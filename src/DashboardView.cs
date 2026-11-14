@@ -157,8 +157,26 @@ namespace FanControl.Dashboard
         }
 
         /// <summary>Test hook for the stand-alone harness: range index, hover position, customize mode and an open editor.</summary>
-        public void Debug(int range, double hover, bool editing, string editor)
+        public void Debug(int range, double hover, bool editing, string editor) { Debug(range, hover, editing, editor, null); }
+
+        /// <summary>Harness hook; <paramref name="drag"/> = "id:x,y" freezes a drag of that card at a pointer position in its panel.</summary>
+        public void Debug(int range, double hover, bool editing, string editor, string drag)
         {
+            if (drag != null)
+            {
+                SetEditing(true);
+                UpdateLayout();
+                var parts = drag.Split(':', ',');
+                var tile = _settings.Tile(parts[0]);
+                var frame = tile != null ? _tileFrames[tile.Id] : _chartFrames[parts[0]];
+                var p = new Point(double.Parse(parts[1], Inv), double.Parse(parts[2], Inv));
+                var panel = tile != null ? _tiles : _charts;
+                var start = panel.SlotOf(frame);
+                if (tile != null) BeginDrag(frame, new Point(start.Width / 2, 40), () => _tiles, _settings.Tiles, tile);
+                else { var c = _settings.Chart(parts[0]); BeginDrag(frame, new Point(start.Width / 2, 40), () => _charts, _settings.Charts, c); }
+                _drag.Move(p);
+                return;
+            }
             _settings.RangeMinutes = Settings.Ranges[Math.Max(0, Math.Min(Settings.Ranges.Length - 1, range))];
             _settings.Save();
             if (editing) SetEditing(true);
@@ -240,7 +258,7 @@ namespace FanControl.Dashboard
             bar.Children.Add(right);
             var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             text.Children.Add(Label("Customize the dashboard"));
-            var hint = Ui.Hint("Click a card or chart to change it.  Drag " + "☰" + " or use the arrows to move it.  The eye hides it.");
+            var hint = Ui.Hint("Click a card or chart to change it, drag it to move it, the eye hides it. Esc leaves.");
             hint.Margin = new Thickness(0, 2, 12, 0);
             text.Children.Add(hint);
             bar.Children.Add(text);
@@ -324,6 +342,7 @@ namespace FanControl.Dashboard
             _charts.Visibility = _charts.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             _charts.Margin = new Thickness(0, _tiles.Children.Count > 0 ? Gap : 0, 0, 0);
             _charts.ForceSingleColumn = _settings.ChartsStacked;
+            _tiles.Animate = _charts.Animate = _editing;
             _charts.InvalidateMeasure();
             _emptyHint.Visibility = !_editing && _tiles.Children.Count == 0 && _charts.Children.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -351,7 +370,7 @@ namespace FanControl.Dashboard
                     edit: () => EditTile(tile.Id),
                     toggle: () => { tile.Hidden = !tile.Hidden; _settings.Save(); },
                     move: d => { Settings.Move(_settings.Tiles, tile, _settings.Tiles.IndexOf(tile) + d); _settings.Save(); },
-                    drag: (frame, e) => DragReorder(frame, _tiles, _settings.Tiles, tile, e));
+                    drag: _drag, begin: (frame, grab) => BeginDrag(frame, grab, () => _tiles, _settings.Tiles, tile));
             }
             foreach (var c in _settings.Charts)
             {
@@ -362,7 +381,7 @@ namespace FanControl.Dashboard
                     edit: () => EditChart(chart.Id, false),
                     toggle: () => { chart.Hidden = !chart.Hidden; _settings.Save(); },
                     move: d => { Settings.Move(_settings.Charts, chart, _settings.Charts.IndexOf(chart) + d); _settings.Save(); },
-                    drag: (frame, e) => DragReorder(frame, _charts, _settings.Charts, chart, e));
+                    drag: _drag, begin: (frame, grab) => BeginDrag(frame, grab, () => _charts, _settings.Charts, chart));
             }
             _addTile = AddButton("Add a card", "Any sensor, or a ready-made card", () => Select("+card", () => NewCardPanel.Build(this)), 120);
             _addChart = AddButton("Add a chart", "Lines from any sensors that share a unit", () =>
@@ -383,23 +402,45 @@ namespace FanControl.Dashboard
             _body.Children.Add(_charts);
         }
 
-        /// <summary>Live reordering while a card's grip is dragged: the card takes the place of the one under the pointer.</summary>
-        void DragReorder<T>(EditFrame frame, ColumnsPanel panel, List<T> list, T item, MouseEventArgs e)
+        readonly DragController _drag = new DragController();
+
+        /// <summary>Starts dragging a card or chart: the list order changes live as it passes other items, and is saved on drop.</summary>
+        void BeginDrag<T>(EditFrame frame, Point grab, Func<ColumnsPanel> panelOf, List<T> list, T item) where T : class
         {
-            var p = e.GetPosition(panel);
-            foreach (UIElement child in panel.Children)
+            var panel = panelOf();
+            Func<EditFrame, T> itemOf = f => list.FirstOrDefault(x => FrameOf(x) == f);
+            int origin = list.IndexOf(item);
+            Func<List<UIElement>> sequence = () =>
             {
-                var other = child as EditFrame;
-                if (other == null || other == frame) continue;
-                var r = new Rect(other.TranslatePoint(new Point(0, 0), panel), other.RenderSize);
-                if (!r.Contains(p)) continue;
-                int target = _tileFrames.ContainsValue(other) ? _settings.Tiles.FindIndex(t => _tileFrames[t.Id] == other)
-                                                               : _settings.Charts.FindIndex(c => _chartFrames.ContainsKey(c.Id) && _chartFrames[c.Id] == other);
-                if (target < 0) return;
-                Settings.Move(list, item, target);
-                ApplySettings(); // reorders the existing frames, nothing is rebuilt
-                return;
-            }
+                var seq = list.Select(x => (UIElement)FrameOf(x)).Where(x => x != null && panel.Children.Contains(x)).ToList();
+                foreach (UIElement c in panel.Children) if (!seq.Contains(c)) seq.Add(c); // the "add" button stays last
+                return seq;
+            };
+            _drag.Begin(frame, panel, grab, Scroller(),
+                target => { var other = itemOf(target); if (other == null) return false; Settings.Move(list, item, list.IndexOf(other)); panel.Sequence = sequence(); return true; },
+                cancel =>
+                {
+                    if (cancel) Settings.Move(list, item, origin);
+                    panel.Sequence = cancel ? sequence() : null;
+                    _settings.Save(); // applies the final order and keeps it
+                    panel.Sequence = null;
+                });
+        }
+
+        EditFrame FrameOf(object item)
+        {
+            EditFrame f = null;
+            var t = item as TileConfig; if (t != null) _tileFrames.TryGetValue(t.Id, out f);
+            var c = item as ChartConfig; if (c != null) _chartFrames.TryGetValue(c.Id, out f);
+            return f;
+        }
+
+        /// <summary>Fan Control's page scroller around the dashboard (for scrolling while dragging near an edge).</summary>
+        ScrollViewer Scroller()
+        {
+            DependencyObject d = this;
+            while (d != null) { d = VisualTreeHelper.GetParent(d); var sv = d as ScrollViewer; if (sv != null) return sv; }
+            return null;
         }
 
         FrameworkElement AddButton(string text, string hint, Action click, double minHeight)
@@ -776,25 +817,25 @@ namespace FanControl.Dashboard
         readonly TextBlock _hiddenNote;
         readonly RowButton _eye;
         readonly Action _edit;
-        bool _editing, _dragging;
+        readonly DragController _drag;
+        readonly Action<EditFrame, Point> _begin;
+        bool _editing, _selected, _pressed, _dragging;
+        Point _press;
+        const double DragThreshold = 5;
 
-        public EditFrame(FrameworkElement content, string name, Action edit, Action toggle, Action<int> move, Action<EditFrame, MouseEventArgs> drag)
+        public EditFrame(FrameworkElement content, string name, Action edit, Action toggle, Action<int> move, DragController drag, Action<EditFrame, Point> begin)
         {
-            _content = content; _edit = edit;
+            _content = content; _edit = edit; _drag = drag; _begin = begin;
+            Focusable = true; FocusVisualStyle = null;
             RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-            // strip above the card (customize mode only): grip, name state, arrows, hide, edit
-            var strip = new DockPanel { Margin = new Thickness(4, 2, 4, 2), Background = Brushes.Transparent };
-            var grip = new Border { Width = 26, Height = 26, Background = Brushes.Transparent, Cursor = Cursors.SizeAll, ToolTip = "Drag to move",
-                                    Child = new TextBlock { Text = "\u2630", FontFamily = new FontFamily("Segoe UI Symbol"), FontSize = 12, Foreground = Palette.TextDim, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } };
-            grip.MouseLeftButtonDown += (s, e) => { _dragging = grip.CaptureMouse(); e.Handled = true; };
-            grip.MouseMove += (s, e) => { if (_dragging) drag(this, e); };
-            grip.MouseLeftButtonUp += (s, e) => { if (_dragging) { _dragging = false; grip.ReleaseMouseCapture(); } e.Handled = true; };
-            grip.LostMouseCapture += (s, e) => _dragging = false;
+            // strip above the card (customize mode only): grip, "Hidden", arrows, hide, edit
+            var strip = new DockPanel { Margin = new Thickness(4, 2, 4, 2), Background = Brushes.Transparent, Cursor = Cursors.SizeAll, ToolTip = "Drag to move" };
+            var grip = new TextBlock { Text = "\u2630", FontFamily = new FontFamily("Segoe UI Symbol"), FontSize = 12, Foreground = Palette.TextDim, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 6, 0) };
             DockPanel.SetDock(grip, Dock.Left);
             strip.Children.Add(grip);
-            var tools = new StackPanel { Orientation = Orientation.Horizontal };
+            var tools = new StackPanel { Orientation = Orientation.Horizontal, Cursor = Cursors.Arrow };
             tools.Children.Add(new RowButton(Ui.GlyphLeft, "Move " + name + " earlier", () => move(-1)));
             tools.Children.Add(new RowButton(Ui.GlyphRight, "Move " + name + " later", () => move(+1)));
             _eye = new RowButton(Ui.GlyphEye, "Hide " + name, toggle);
@@ -803,36 +844,200 @@ namespace FanControl.Dashboard
             DockPanel.SetDock(tools, Dock.Right);
             strip.Children.Add(tools);
             _hiddenNote = DashboardView.Small("Hidden", Palette.TextMuted);
-            _hiddenNote.Margin = new Thickness(4, 0, 0, 0);
             strip.Children.Add(_hiddenNote);
             _strip = strip;
             Children.Add(strip);
 
             Grid.SetRow(content, 1);
             Children.Add(content);
-            // transparent layer over the card: in customize mode a click anywhere on the card edits it (instead of e.g. hiding a chart line)
-            _shield = new Border { Background = Brushes.Transparent, Cursor = Cursors.Hand, ToolTip = "Edit " + name };
-            _shield.MouseLeftButtonUp += (s, e) => { if (_editing) { _edit(); e.Handled = true; } };
+            // transparent layer over the card: a click edits it, a drag (from anywhere on the card or the strip) moves it
+            _shield = new Border { Background = Brushes.Transparent, Cursor = Cursors.Hand, ToolTip = "Click to edit, drag to move" };
             Grid.SetRow(_shield, 1);
             Children.Add(_shield);
+            foreach (var surface in new UIElement[] { _shield, strip }) Wire(surface, surface == _shield);
             Grid.SetRowSpan(_outline, 2);
             _outline.Margin = new Thickness(-1);
             Children.Add(_outline);
+            MouseEnter += (s, e) => Paint();
+            MouseLeave += (s, e) => Paint();
+            KeyDown += (s, e) => { if (e.Key == Key.Escape && _dragging) { _dragging = false; _pressed = false; Mouse.Capture(null); _drag.End(true); e.Handled = true; } };
             AutomationProperties.SetName(this, name);
             SetState(false, false, false);
         }
 
+        void Wire(UIElement surface, bool clickEdits)
+        {
+            surface.MouseLeftButtonDown += (s, e) =>
+            {
+                if (!_editing || e.OriginalSource is TextBlock && ((TextBlock)e.OriginalSource).FontFamily == IconButton.Icons) return;
+                _pressed = true; _press = e.GetPosition(this);
+                surface.CaptureMouse();
+                e.Handled = true;
+            };
+            surface.MouseMove += (s, e) =>
+            {
+                if (!_pressed) return;
+                if (!_dragging)
+                {
+                    var p = e.GetPosition(this);
+                    if (Math.Abs(p.X - _press.X) < DragThreshold && Math.Abs(p.Y - _press.Y) < DragThreshold) return;
+                    _dragging = true;
+                    Focus(); // so Esc can cancel
+                    _begin(this, _press);
+                }
+                _drag.Move();
+            };
+            surface.MouseLeftButtonUp += (s, e) =>
+            {
+                if (!_pressed) return;
+                _pressed = false;
+                bool dragged = _dragging;
+                _dragging = false;
+                surface.ReleaseMouseCapture();
+                if (dragged) _drag.End(false);
+                else if (clickEdits) _edit();
+                e.Handled = true;
+            };
+            surface.LostMouseCapture += (s, e) =>
+            {
+                if (!_dragging) { _pressed = false; return; }
+                _dragging = false; _pressed = false;
+                _drag.End(false);
+            };
+        }
+
         public void SetState(bool editing, bool hidden, bool selected)
         {
-            _editing = editing;
+            bool entering = editing && !_editing;
+            _editing = editing; _selected = selected;
             _shield.Visibility = _outline.Visibility = _strip.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
             _hiddenNote.Visibility = editing && hidden ? Visibility.Visible : Visibility.Collapsed;
             _content.Opacity = editing && hidden ? 0.4 : 1;
-            _outline.Stroke = selected ? Palette.Accent : Palette.CardEdge;
-            _outline.StrokeDashArray = selected ? null : new DoubleCollection { 4, 3 };
-            _outline.StrokeThickness = selected ? 2 : 1.5;
             ((TextBlock)_eye.Child).Text = hidden ? Ui.GlyphEyeOff : Ui.GlyphEye;
             _eye.Tip(hidden ? "Show" : "Hide");
+            Paint();
+            if (entering)
+            {
+                // the edit chrome fades in instead of popping
+                var fade = new System.Windows.Media.Animation.DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(160)));
+                _strip.BeginAnimation(OpacityProperty, fade);
+                _outline.BeginAnimation(OpacityProperty, fade);
+            }
+        }
+
+        void Paint()
+        {
+            bool hot = _editing && (IsMouseOver || _dragging);
+            _outline.Stroke = _selected || hot ? Palette.Accent : Palette.CardEdge;
+            _outline.StrokeDashArray = _selected || hot ? null : new DoubleCollection { 4, 3 };
+            _outline.StrokeThickness = _selected ? 2 : 1.5;
+        }
+    }
+
+    /// <summary>
+    /// Moves a card with the pointer: lifted (shadow, slightly larger) above the others while the rest make room, then
+    /// settles into its new slot. Scrolls Fan Control's page when the pointer nears its top or bottom edge.
+    /// </summary>
+    sealed class DragController
+    {
+        EditFrame _frame;
+        ColumnsPanel _panel;
+        ScrollViewer _scroll;
+        Point _grab;
+        Func<EditFrame, bool> _moveTo;
+        Action<bool> _done;
+        TranslateTransform _t;
+        ScaleTransform _s;
+        System.Windows.Threading.DispatcherTimer _timer;
+
+        public bool Active { get { return _frame != null; } }
+
+        public void Begin(EditFrame frame, ColumnsPanel panel, Point grab, ScrollViewer scroll, Func<EditFrame, bool> moveTo, Action<bool> done)
+        {
+            if (_frame != null) End(true);
+            _frame = frame; _panel = panel; _grab = grab; _scroll = scroll; _moveTo = moveTo; _done = done;
+            _t = new TranslateTransform();
+            _s = new ScaleTransform(1, 1, frame.ActualWidth / 2, frame.ActualHeight / 2);
+            var group = new TransformGroup(); group.Children.Add(_s); group.Children.Add(_t);
+            frame.RenderTransform = group;
+            Panel.SetZIndex(frame, 100);
+            frame.Background = Palette.Card; // lifted: opaque, so the placeholder does not show through
+            frame.Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 22, ShadowDepth = 6, Opacity = 0.35, Direction = 270 };
+            var lift = new System.Windows.Media.Animation.DoubleAnimation(1, 1.025, new Duration(TimeSpan.FromMilliseconds(120)));
+            _s.BeginAnimation(ScaleTransform.ScaleXProperty, lift);
+            _s.BeginAnimation(ScaleTransform.ScaleYProperty, lift);
+            panel.Animate = true;
+            panel.Dragged = frame;
+            _timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+            _timer.Tick += (s, e) => AutoScroll();
+            if (Mouse.LeftButton == MouseButtonState.Pressed) { _timer.Start(); Move(); }
+        }
+
+        /// <summary>Follows the pointer and moves the card to the slot under it.</summary>
+        public void Move() { if (_frame != null) Move(Mouse.GetPosition(_panel)); }
+
+        /// <summary>Follows a pointer position in panel coordinates (the harness uses this directly).</summary>
+        internal void Move(Point p)
+        {
+            if (_frame == null) return;
+            foreach (UIElement c in _panel.Children)
+            {
+                var other = c as EditFrame;
+                if (other == null || other == _frame) continue;
+                if (!_panel.SlotOf(other).Contains(p)) continue;
+                if (_moveTo(other)) _panel.UpdateLayout();
+                break;
+            }
+            var slot = _panel.SlotOf(_frame);
+            _t.X = p.X - _grab.X - slot.X;
+            _t.Y = p.Y - _grab.Y - slot.Y;
+        }
+
+        void AutoScroll()
+        {
+            if (_frame == null || _scroll == null) return;
+            var p = Mouse.GetPosition(_scroll);
+            const double edge = 56;
+            double dy = p.Y < edge ? -(edge - p.Y) / 3 : p.Y > _scroll.ViewportHeight - edge ? (p.Y - (_scroll.ViewportHeight - edge)) / 3 : 0;
+            if (Math.Abs(dy) < 0.5) return;
+            _scroll.ScrollToVerticalOffset(_scroll.VerticalOffset + dy);
+            _scroll.UpdateLayout();
+            Move();
+        }
+
+        /// <summary>Drops the card (or puts it back on Esc) and lets it glide into its slot.</summary>
+        public void End(bool cancel)
+        {
+            if (_frame == null) return;
+            var frame = _frame; var panel = _panel; var t = _t; var s = _s; var done = _done;
+            _frame = null; _panel = null;
+            if (_timer != null) { _timer.Stop(); _timer = null; }
+            // where the card is on screen now, relative to the slot it will end up in
+            var before = t.Transform(new Point(0, 0));
+            var slotBefore = panel.SlotOf(frame);
+            done(cancel);
+            panel.UpdateLayout();
+            var slotAfter = panel.SlotOf(frame);
+            double fromX = before.X + slotBefore.X - slotAfter.X, fromY = before.Y + slotBefore.Y - slotAfter.Y;
+            panel.Dragged = null;
+            var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+            var time = new Duration(TimeSpan.FromMilliseconds(180));
+            var settle = new TranslateTransform(fromX, fromY);
+            var scale = new ScaleTransform(s.ScaleX, s.ScaleY, s.CenterX, s.CenterY);
+            var group = new TransformGroup(); group.Children.Add(scale); group.Children.Add(settle);
+            frame.RenderTransform = group;
+            var x = new System.Windows.Media.Animation.DoubleAnimation(fromX, 0, time) { EasingFunction = ease };
+            x.Completed += (o, e) =>
+            {
+                frame.RenderTransform = new TranslateTransform();
+                frame.Effect = null;
+                frame.Background = null;
+                Panel.SetZIndex(frame, 0);
+            };
+            settle.BeginAnimation(TranslateTransform.XProperty, x);
+            settle.BeginAnimation(TranslateTransform.YProperty, new System.Windows.Media.Animation.DoubleAnimation(fromY, 0, time) { EasingFunction = ease });
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, new System.Windows.Media.Animation.DoubleAnimation(1, time));
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, new System.Windows.Media.Animation.DoubleAnimation(1, time));
         }
     }
 

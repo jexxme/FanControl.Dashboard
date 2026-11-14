@@ -22,6 +22,9 @@ First public version.
 - Display options: °C or °F, compact density, charts side by side or stacked, chart height, line smoothing, limit lines.
 - History of one hour (2 / 5 / 10 / 30 / 60 minutes); charts draw at most about two points per pixel.
 - Plugin sensors `CPU load %`, `GPU load %`, `RAM used %`.
+- History survives restarts (saved every 5 minutes and on close, restored with a gap for the downtime).
+- Drag and drop in customize mode: drag a card from anywhere, it lifts and follows the pointer while the others make room,
+  a placeholder shows where it lands, Esc puts it back; the page scrolls near its edges.
 - Works in both Fan Control V285 builds, .NET Framework 4.8 and .NET 10, with the same DLL. JSON is now read and written
   by the plugin itself instead of `System.Web.Extensions` (which .NET 10 does not have); the settings file format is unchanged.
 - Sensor detection for Intel CPUs and NVIDIA GPUs (LibreHardwareMonitor naming) besides AMD CPUs and AMD GPUs (ADLX).
