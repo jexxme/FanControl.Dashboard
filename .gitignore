@@ -1,0 +1,24 @@
+# Build output
+bin/
+obj/
+artifacts/
+dist/*.dll
+dist/*.zip
+dist/*.pdb
+TestResults/
+*.user
+.vs/
+.vscode/
+.idea/
+
+# Personal material: fan profiles, machine-specific scripts, scratch screenshots.
+# Kept on disk for the maintainer, never committed.
+local/
+*.png
+!docs/*.png
+
+# Fan Control's own files must never be committed (proprietary license, see README).
+FanControl.Plugins.dll
+FanControl.IPC.dll
+FanControl*.zip
+.fancontrol/

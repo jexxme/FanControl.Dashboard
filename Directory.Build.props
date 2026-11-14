@@ -1,0 +1,29 @@
+<Project>
+  <!--
+    Shared build settings.
+
+    Fan Control's assemblies (FanControl.Plugins, FanControl.IPC, Grpc.Core.Api, Google.Protobuf) are not
+    redistributable and are not on NuGet, so they are referenced from an installed (or unzipped) Fan Control.
+    Override with:  dotnet build -p:FanControlDir="D:\Apps\FanControl"
+    or set the FANCONTROL_DIR environment variable.
+  -->
+  <PropertyGroup>
+    <FanControlDir Condition="'$(FanControlDir)' == '' and '$(FANCONTROL_DIR)' != ''">$(FANCONTROL_DIR)</FanControlDir>
+    <FanControlDir Condition="'$(FanControlDir)' == ''">C:\Program Files (x86)\FanControl</FanControlDir>
+    <FanControlDir>$([MSBuild]::EnsureTrailingSlash('$(FanControlDir)'))</FanControlDir>
+
+    <Version>0.1.0</Version>
+    <Authors>fancontrol-dashboard contributors</Authors>
+    <Product>Fan Control Dashboard (unofficial plugin)</Product>
+    <Copyright>Copyright (c) 2026 fancontrol-dashboard contributors</Copyright>
+
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <DebugType>portable</DebugType>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+</Project>

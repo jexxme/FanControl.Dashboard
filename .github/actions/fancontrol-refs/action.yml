@@ -1,0 +1,48 @@
+name: Fan Control reference assemblies
+description: >
+  Downloads the official Fan Control release from github.com/Rem0o/FanControl.Releases, checks its SHA-256 and
+  extracts only the assemblies the build compiles against into the runner's temp folder. Nothing from Fan Control
+  is committed, cached in the repository or published: Fan Control is proprietary (see its LICENSE) and is only used
+  here the way any user's machine uses an installed copy.
+inputs:
+  version:
+    description: Fan Control release tag
+    default: V285
+  asset:
+    description: Release asset (the .NET Framework 4.8 build)
+    default: FanControl_285_net_4_8.zip
+  sha256:
+    description: Expected SHA-256 of the asset
+    default: 988345d09226836e34e9006a263e578484b0585a9e53fced72c9a9425b5af72c
+outputs:
+  dir:
+    description: Folder with the extracted assemblies (pass as FanControlDir)
+    value: ${{ steps.get.outputs.dir }}
+runs:
+  using: composite
+  steps:
+    - id: get
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $work = Join-Path $env:RUNNER_TEMP 'fancontrol-download'
+        $dir = Join-Path $env:RUNNER_TEMP 'fancontrol'
+        New-Item -ItemType Directory -Force $work, $dir | Out-Null
+        gh release download '${{ inputs.version }}' --repo Rem0o/FanControl.Releases --pattern '${{ inputs.asset }}' --dir $work --clobber
+        $zip = Join-Path $work '${{ inputs.asset }}'
+        $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($hash -ne '${{ inputs.sha256 }}') { throw "Unexpected SHA-256 $hash for ${{ inputs.asset }}" }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $wanted = 'FanControl.Plugins.dll', 'FanControl.IPC.dll', 'Grpc.Core.Api.dll', 'Google.Protobuf.dll',
+                  'MaterialDesignThemes.Wpf.dll', 'MaterialDesignColors.dll', 'Microsoft.Xaml.Behaviors.dll'
+        $archive = [IO.Compression.ZipFile]::OpenRead($zip)
+        try {
+          foreach ($e in $archive.Entries) {
+            if ($wanted -contains $e.FullName) { [IO.Compression.ZipFileExtensions]::ExtractToFile($e, (Join-Path $dir $e.FullName), $true) }
+          }
+        } finally { $archive.Dispose() }
+        Remove-Item -Recurse -Force $work
+        Get-ChildItem $dir | Format-Table Name, Length
+        "dir=$dir" >> $env:GITHUB_OUTPUT

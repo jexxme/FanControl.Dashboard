@@ -1,0 +1,46 @@
+name: Bug report
+description: Something does not work or looks wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! This is an unofficial plugin; please do not report dashboard problems to Fan Control's author.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect instead? Screenshots help a lot.
+    validations:
+      required: true
+  - type: input
+    id: fancontrol
+    attributes:
+      label: Fan Control version and build
+      placeholder: "V285, .NET Framework 4.8 build"
+    validations:
+      required: true
+  - type: input
+    id: plugin
+    attributes:
+      label: Dashboard version
+      placeholder: "0.1.0 (right-click FanControl.Dashboard.dll, Properties, Details)"
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: CPU, GPU and RAM type
+      placeholder: "e.g. Intel Core i5-13600K, NVIDIA RTX 4070, DDR5"
+  - type: textarea
+    id: log
+    attributes:
+      label: "[Dashboard] lines from Fan Control's log.txt"
+      description: log.txt is in Fan Control's folder. For crashes or high memory use, include the `memory:` lines.
+      render: text
+  - type: textarea
+    id: sensors
+    attributes:
+      label: Sensor list (for missing or wrong values)
+      description: Output of `FcTool.exe sensors` (see CONTRIBUTING.md). Remove anything you consider private.
+      render: text

@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Fan Control reference assemblies
+        id: fc
+        uses: ./.github/actions/fancontrol-refs
+
+      - name: Build
+        run: dotnet build FanControl.Dashboard.sln -c Release -p:FanControlDir="${{ steps.fc.outputs.dir }}" -nologo
+
+      - name: Test
+        run: dotnet test FanControl.Dashboard.sln -c Release --no-build -p:FanControlDir="${{ steps.fc.outputs.dir }}" -nologo --logger "trx;LogFileName=results.trx" --results-directory TestResults
+
+      - name: Render UI previews (demo data)
+        shell: pwsh
+        env:
+          FANCONTROL_DIR: ${{ steps.fc.outputs.dir }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force previews | Out-Null
+          $h = 'harness\bin\Release\Harness.exe'
+          $runs = @(
+            '--demo full --theme dark --out previews\dark.png',
+            '--demo full --theme light --out previews\light.png',
+            '--demo full --theme dark --settings --out previews\settings.png',
+            '--demo intel-nvidia --theme dark --width 760 --out previews\intel-nvidia-760.png',
+            '--demo no-gpu --theme light --width 400 --layout 2 --out previews\no-gpu-400.png',
+            '--demo full --theme dark --collapsed --out previews\collapsed.png'
+          )
+          foreach ($r in $runs) {
+            $p = Start-Process $h -ArgumentList $r -Wait -PassThru -NoNewWindow
+            if ($p.ExitCode) { throw "harness failed: $r" }
+          }
+          Get-ChildItem previews
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: previews-and-test-results
+          path: |
+            previews/*.png
+            TestResults/*.trx
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FanControl.Dashboard
+          path: src/bin/Release/FanControl.Dashboard.dll
