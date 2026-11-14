@@ -92,7 +92,7 @@ namespace FanControl.Dashboard
             return "Other";
         }
 
-        /// <summary>Where a sensor comes from, for telling similar names apart: "nct6799d", "RX 7900 GRE", "Mix".</summary>
+        /// <summary>Where a sensor comes from, for telling similar names apart: "lpc it8688e", "RX 7800 XT", "Mix".</summary>
         public static string Source(SensorInfo s)
         {
             var parts = (s.Id ?? "").Trim('/').Split('/');
