@@ -37,9 +37,9 @@ Fan Control's Home page: temperatures, load and fan speeds at a glance, plus his
 
 | | |
 |---|---|
-| Fan Control | **V285** (tested), the **.NET Framework 4.8** build (`FanControl_285_net_4_8`). The .NET 10 build of Fan Control is not supported yet. |
+| Fan Control | **V285**, both builds: **.NET Framework 4.8** (`FanControl_285_net_4_8`) and **.NET 10** (`FanControl_285_net_10_0`). One DLL works in both. |
 | Windows | Windows 10 and 11, x64 |
-| .NET | .NET Framework 4.8 (included in Windows 10 1903+ and Windows 11) |
+| .NET | Whatever your Fan Control build uses: .NET Framework 4.8 (included in Windows 10 1903+ and Windows 11) or .NET 10 (installed with that Fan Control build) |
 | Hardware | Whatever Fan Control can read. Tested sensor naming: AMD and Intel CPUs; AMD GPUs (ADLX and LibreHardwareMonitor) and NVIDIA GPUs; DDR5 module temperatures. Missing sensors are shown as such, never as zeros. |
 
 Other Fan Control versions may work, but because the dashboard is inserted into Fan Control's own window
@@ -122,11 +122,14 @@ Open them with the gear icon in the dashboard header. Changes apply and save imm
   in Fan Control's sensor lists; tray icons show only the number.
 - **History starts empty** after every Fan Control restart (it is kept in memory only).
 - **English only**, and temperatures are always shown in °C.
-- **.NET 10 build of Fan Control** is not supported yet (the plugin uses `System.Web.Extensions` for JSON, which only exists in .NET Framework).
+- **How the .NET 10 build is verified**: the plugin is one .NET Framework 4.8 DLL, which .NET 10 can load. CI runs every test
+  and renders the UI under both runtimes, each against the assemblies of the matching official Fan Control V285 build
+  (including a test that JIT-compiles every method of the plugin and one that calls Fan Control's IPC client). It has
+  not been tried in a running .NET 10 Fan Control yet; reports are welcome.
 
 ## Building
 
-Requirements: Windows, the [.NET SDK](https://dotnet.microsoft.com/download) (8 or newer) and Fan Control V285 installed
+Requirements: Windows, the [.NET SDK](https://dotnet.microsoft.com/download) (8 or newer; 10 for the .NET 10 test run) and Fan Control V285 installed
 (the build compiles against Fan Control's assemblies, which may not be redistributed and are not on NuGet).
 
 ```powershell
@@ -136,13 +139,18 @@ dotnet build -p:FanControlDir="D:\Apps\FanControl"
 dotnet test
 ```
 
+To also build and run the tests and the harness under .NET 10 (as Fan Control's .NET 10 build loads the plugin), unzip
+`FanControl_285_net_10_0.zip` from [Fan Control's releases](https://github.com/Rem0o/FanControl.Releases/releases) somewhere
+and pass `-p:FanControlNet10Dir=<that folder>` (or set `FANCONTROL_NET10_DIR`); this needs the .NET 10 SDK. The .NET 10
+harness is then `harness\bin\Release\net10.0-windows\Harness.exe` (set `FANCONTROL_DIR` to the .NET 10 folder when you run it).
+
 Without a .NET SDK, `build.ps1` falls back to the C# compiler of Visual Studio / Build Tools (tests are skipped).
 Then install your build with `dist\Install-Dashboard.ps1`.
 
 | Path | |
 |---|---|
-| `src/` | The plugin: `Plugin.cs` (entry point, UI injection), `Sampler.cs` (1 Hz sampling over Fan Control's IPC), `SensorMatcher.cs`, `HistoryBuffer.cs`, `Settings.cs`, `DashboardView.cs`, `Chart.cs`, `Controls.cs`, `Theme.cs`, `Health.cs` (memory watchdog), `Native.cs` (CPU/RAM/GPU counters) |
-| `tests/` | xUnit tests for the pure logic: settings, ring buffer, sensor matching, column layout, fan list parsing |
+| `src/` | The plugin: `Plugin.cs` (entry point, UI injection), `Sampler.cs` (1 Hz sampling over Fan Control's IPC), `SensorMatcher.cs`, `HistoryBuffer.cs`, `Settings.cs`, `Json.cs`, `DashboardView.cs`, `Chart.cs`, `Controls.cs`, `Theme.cs`, `Health.cs` (memory watchdog), `Native.cs` (CPU/RAM/GPU counters) |
+| `tests/` | xUnit tests: settings, JSON, ring buffer, sensor matching, column layout, fan list parsing, and binding/IPC/lifecycle checks against Fan Control's assemblies (run under .NET Framework 4.8 and .NET 10) |
 | `harness/` | Stand-alone host that renders the dashboard to a PNG |
 | `tools/FcTool/` | Developer helper: list Fan Control's sensors and profiles over IPC |
 | `dist/` | Install and uninstall scripts (the built DLL lands here) |

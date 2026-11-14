@@ -12,6 +12,8 @@ First public version.
   charts (side by side, stacked or one chart; 2/5/10/30 minutes) with limit lines, a synced hover crosshair and a clickable legend.
 - Settings panel (gear icon), saved to `%AppData%\FanControl.Dashboard\settings.json`.
 - Plugin sensors `CPU load %`, `GPU load %`, `RAM used %`.
+- Works in both Fan Control V285 builds, .NET Framework 4.8 and .NET 10, with the same DLL. JSON is now read and written
+  by the plugin itself instead of `System.Web.Extensions` (which .NET 10 does not have); the settings file format is unchanged.
 - Sensor detection for Intel CPUs and NVIDIA GPUs (LibreHardwareMonitor naming) besides AMD CPUs and AMD GPUs (ADLX).
 - The RAM warning can follow the modules' own reported threshold (DDR5 SPD hub); new option, on by default.
 - States for missing hardware: no GPU sensors; no module temperatures (DDR4 and many laptops: shows memory in use instead);
@@ -23,6 +25,7 @@ First public version.
   and in use, while the out-of-memory crash reports are investigated (see README, Known issues).
 - `Install-Dashboard.ps1` / `Uninstall-Dashboard.ps1` find Fan Control, unblock the downloaded DLL and restart Fan Control.
 - Harness with demo data and light/dark MaterialDesign hosting for screenshots; xUnit tests; CI and tag-based releases.
+  CI runs the tests and the harness under both .NET Framework 4.8 and .NET 10 against the official Fan Control builds.
 
 ### Changed (compared with the private pre-release builds)
 - Default CPU limit is 95 °C (was 89 °C, the Tjmax of Ryzen X3D CPUs); set it to your CPU's Tjmax.
