@@ -120,6 +120,8 @@ static class Harness
                 Dispatcher.CurrentDispatcher.BeginInvoke(new Action(() =>
                 {
                     // lay out at full height: a window cannot grow past the screen, which would clip tall renders (e.g. on CI)
+                    // detached from the window, so the window's own layout pass cannot shrink it again
+                    win.Content = null;
                     host.Measure(new Size(host.Width, double.PositiveInfinity));
                     host.Arrange(new Rect(0, 0, host.Width, host.DesiredSize.Height));
                     host.UpdateLayout();

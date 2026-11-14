@@ -35,7 +35,9 @@ namespace FanControl.Dashboard
         public int Points { get; set; }
         public Action<Chart, double> HoverChanged;
         public SeriesDef[] AllSeries { get { return Mode == 0 ? _temp : _load; } }
-        SeriesDef[] Visible { get { return AllSeries.Where(s => !_settings.IsHidden(Mode, s.Key)).ToArray(); } }
+        /// <summary>Whether a series has a sensor at all (set by the card); unavailable series are neither drawn nor listed.</summary>
+        public Func<string, bool> IsAvailable = key => true;
+        SeriesDef[] Visible { get { return AllSeries.Where(s => IsAvailable(s.Key) && !_settings.IsHidden(Mode, s.Key)).ToArray(); } }
 
         public Chart(Settings settings) : this(settings, null) { }
         public Chart(Settings settings, Sampler sampler) { _settings = settings; _sampler = sampler; Points = 600; ClipToBounds = true; }
@@ -237,7 +239,7 @@ namespace FanControl.Dashboard
                 if (!own) return;
                 int ago = Points - 1 - i;
                 var head = Text(ago == 0 ? "now" : ago < 60 ? ago + " s ago" : (ago / 60) + " min " + (ago % 60).ToString("00") + " s ago", Palette.TextDim, 11);
-                var lines = rows.Select(r => Text(r.Item1.Name + "   " + (float.IsNaN(r.Item2) ? "–" : r.Item2.ToString("0.#", Inv) + " " + r.Item1.Unit), Palette.Text, 11.5)).ToList();
+                var lines = rows.Select(r => Text(r.Item1.Name + "   " + (float.IsNaN(r.Item2) ? "–" : r.Item2.ToString("0.0", Inv) + " " + r.Item1.Unit), Palette.Text, 11.5)).ToList();
                 double bw = Math.Max(head.Width, lines.Max(l => l.Width) + 14) + 20, bh = 12 + head.Height + lines.Sum(l => l.Height + 3) + 6;
                 double bx = x + 12; if (bx + bw > plot.Right) bx = Math.Max(2, x - 12 - bw); // keep clear of the end labels
                 double by = Math.Max(plot.Top, Math.Min(_mouse.Value.Y - bh / 2, plot.Bottom - bh));

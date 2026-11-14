@@ -675,6 +675,7 @@ namespace FanControl.Dashboard
             _settings = settings;
             Chart = new Chart(settings) { Mode = mode, Margin = new Thickness(0, 10, 0, 0) };
             Chart.HoverChanged = hover;
+            Chart.IsAvailable = key => !_discovered || _seen.Contains(key);
             AutomationProperties.SetName(Chart, title + " history chart");
             var head = new DockPanel { LastChildFill = true };
             if (withToggle)
